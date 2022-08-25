@@ -8,32 +8,31 @@ FLASH - sink detected, negative slope exceeds threshold
 OFF - between rise/sink thresholds
 */
 
-// parameters to adjust for flight 
+// if using BMP180 sensor, define this
+#define BMP180
 
-// how many milliseconds before activation of the let down motor
-#define LET_DOWN_DELAY (6000)
-
-// how long to run the motor (ms)
-#define LET_DOWN_DURATION (6000)
-
-// when to terminate the flight (ms)
-#define MAX_FLIGHT_DURATION (50000)
-
-// pressure at which to cut, mbar
-//#define CUT_PRESSURE (972.5)
-#define CUT_PRESSURE (10.0)
-
-// how long to cut (ms)
-#define CUT_DURATION (6000)
-
+#ifdef BMP180
 #include <Adafruit_BMP085.h>
-
-// Connect VCC of the BMP085 sensor to 3.3V (NOT 5.0V!)
+// Connect VCC of the BMP180 sensor to 3.3V (NOT 5.0V!)
 // Connect GND to Ground
 // Connect SCL to i2c clock - on '168/'328 Arduino Uno/Duemilanove/etc thats Analog 5
 // Connect SDA to i2c data - on '168/'328 Arduino Uno/Duemilanove/etc thats Analog 4
+#endif
 
-Adafruit_BMP085 bmp;
+#include <StaticSerialCommands.h>
+// #define _SS_MAX_RX_BUFF 128 // RX buffer size
+#include <NeoSWSerial.h>
+#include <MicroNMEA.h>
+#include <EEPROM.h>
+
+// debug state engine
+#define DEBUG (1)
+
+// debug sensor and filter
+#define DEBUG_SENSOR (0)
+
+// debug plot the rise_rate
+#define DEBUG_PLOT (0)
 
 // Motor port
 #define MOTOR (2)
@@ -42,31 +41,55 @@ Adafruit_BMP085 bmp;
 #define CUTTER (3)
 
 // length of filter (N must be odd)
-#define N (129)
+#define N (63)
 
-// filter delay in milliseconds
-#define FILTER_DELAY (3000)
+// filter delay in milliseconds, approx
+#define FILTER_DELAY (2500)
 
 // sample period in msec (loop delay in excess of pressure reading delay, 32ms for MS5611, ~68ms for BMP180)
+// integration period is N*(T+pressure reading delay) msec.  63*(10+68) = 4914 ms
 #define T (10)
 
-// rise rate to trigger event.  mbar/second... i think. depends on sample rate
-#define RISE_RATE_THRESHOLD (40)
+// sink rate to trigger event - not presently used; could be used to detect balloon pop
+#define SINK_RATE_THRESHOLD (-500)
 
-// sink rate to trigger event
-#define SINK_RATE_THRESHOLD (-40)
+// parameters to adjust for flight 
+// address/serial number of unit
+static unsigned int unit_id;
 
-// interval in seconds to send position update
-#define UPDATE_INTERVAL (120)
+// how many seconds before activation of the let down motor
+static unsigned int letdown_delay;
 
-// integration period is N*(T+32) msec = 5418 msec
+// how long to run the motor (seconds)
+static unsigned int letdown_duration;
+
+// when to terminate the flight (seconds)
+static unsigned int max_flight_duration;
+
+// pressure at which to cut, mbar
+static unsigned int cut_pressure;
+
+// how long to cut (seconds)
+static unsigned int cut_duration;
+
+// rise rate to trigger event. should be higher than noise but less than balloon rise rate. units: Pa/second? i think. depends on sample rate and filter
+// elevator in NWC peaks out around 1000.  noise level is +/- 150
+static unsigned int rise_rate_threshold;
+
+// how often to send GPS packet
+static unsigned int update_interval;
+
+NeoSWSerial gpsSerial (10, 9);
+#ifdef BMP180
+  Adafruit_BMP085 bmp;
+#endif
 
 // vector of filter coefficients
-static double filter[N];
+static long filter[N];
 
 // circular buffer of N samples
-static double sample[N];
-static double base_pressure;
+static long sample[N];
+static long base_pressure;
 
 // index of circular buffer, 0 to N-1
 static unsigned int n = 0;  
@@ -75,7 +98,7 @@ static unsigned int n = 0;
 enum state
 { 
     PRELAUNCH, 
-    LETDOWN_DELAY,
+    LETDOWN_INIT,
     LETDOWN_ACTIVE,
     FLIGHT,
     CUT_INIT,
@@ -88,13 +111,186 @@ state active_state = PRELAUNCH;  // initial state
 
 int LED_period = 2000;  // interval to blink LED
 int LED_duration = 50;  // duration of LED blink
+unsigned long launch_time = 0;  // so we can time letdown and flight time
+
+void cmd_help(SerialCommands& sender, Args& args);
+void cmd_ping(SerialCommands& sender, Args& args);
+void cmd_show(SerialCommands& sender, Args& args);
+void cmd_cut(SerialCommands& sender, Args& args);
+void cmd_letdown(SerialCommands& sender, Args& args);
+void cmd_update(SerialCommands& sender, Args& args);
+void cmd_set(SerialCommands& sender, Args& args);
+void cmd_set_unit_id(SerialCommands& sender, Args& args);
+void cmd_set_letdown_delay(SerialCommands& sender, Args& args);
+void cmd_set_letdown_duration(SerialCommands& sender, Args& args);
+void cmd_set_max_flight_duration(SerialCommands& sender, Args& args);
+void cmd_set_cut_pressure(SerialCommands& sender, Args& args);
+void cmd_set_cut_duration(SerialCommands& sender, Args& args);
+void cmd_set_rise_rate_threshold(SerialCommands& sender, Args& args);
+void cmd_set_update_interval(SerialCommands& sender, Args& args);
+
+Command subCommands [] {
+  COMMAND(cmd_set_unit_id, "unit_id", ArgType::Int, nullptr, "unique address"),
+  COMMAND(cmd_set_letdown_delay, "letdown_delay", ArgType::Int, nullptr, "activation after launch, secs"),
+  COMMAND(cmd_set_letdown_duration, "letdown_duration", ArgType::Int, nullptr, "time to lower, secs"),
+  COMMAND(cmd_set_max_flight_duration, "max_flight_duration", ArgType::Int, nullptr, "elapsed time to terminate flight, secs"),
+  COMMAND(cmd_set_cut_pressure, "cut_pressure", ArgType::Int, nullptr, "pressure to terminate flight, mbar"),
+  COMMAND(cmd_set_cut_duration, "cut_duration", ArgType::Int, nullptr, "how long to activate cutter, secs"),
+  COMMAND(cmd_set_rise_rate_threshold, "rise_rate_threshold", ArgType::Int, nullptr, "let-down trigger sensitivity (~500-1000)"),
+  COMMAND(cmd_set_update_interval, "update_interval", ArgType::Int, nullptr, "how often to send beacon"),
+};
+
+Command commands[] {
+  COMMAND(cmd_help, "help", nullptr, "list cmds"),
+  COMMAND(cmd_ping, "ping", ArgType::String, nullptr, "link test"),
+  COMMAND(cmd_show, "show", nullptr, "show params"),
+  COMMAND(cmd_set, "set", subCommands, "set params"),
+  COMMAND(cmd_letdown, "letdown", ArgType::Int, nullptr, "actuate letdown <int> seconds"),
+  COMMAND(cmd_cut, "cut", ArgType::Int, nullptr, "actuate cutter unit_id <int>"),
+  COMMAND(cmd_update, "update", ArgType::Int, nullptr, "temp change update rate"),
+};
+
+void cmd_help(SerialCommands& sender, Args& args) {
+  sender.listCommands();
+}
+
+void cmd_update(SerialCommands& sender, Args& args) {
+  update_interval = args[0].getInt();
+}
+
+void cmd_ping(SerialCommands& sender, Args& args) {
+  sender.getSerial().print(F("pong "));
+  sender.getSerial().println(args[0].getString());
+}
+
+void cmd_cut(SerialCommands& sender, Args& args) {
+  if (args[0].getInt() == unit_id) {
+    sender.getSerial().println(F("cutter activated"));
+    active_state = CUT_INIT;
+  } else {
+    sender.getSerial().println(F("unit_id mismatch"));
+  }
+}
+
+// this command is only for ground testing, as puts you in flight mode
+// could be used if the pressure sensor goes nuts and the letdown doesn't trip
+void cmd_letdown(SerialCommands& sender, Args& args) {
+  sender.getSerial().println(F("letdown activating in 3 secs"));
+  active_state = LETDOWN_INIT;
+  launch_time = millis();
+  letdown_duration = args[0].getInt();
+  letdown_delay = 3;  
+  LED_period = 500;  // long slow blink
+  LED_duration = 450;
+  digitalWrite(CUTTER, LOW);  // turn off cutter just in case
+}
+
+void cmd_show(SerialCommands& sender, Args& args) {
+  sender.getSerial().print(F("unit_id: "));
+  sender.getSerial().println(unit_id);
+  sender.getSerial().print(F("letdown_delay: "));
+  sender.getSerial().println(letdown_delay);
+  sender.getSerial().print(F("letdown_duration: "));
+  sender.getSerial().println(letdown_duration);
+  sender.getSerial().print(F("max_flight_duration: "));
+  sender.getSerial().println(max_flight_duration);
+  sender.getSerial().print(F("cut_pressure: "));
+  sender.getSerial().println(cut_pressure);
+  sender.getSerial().print(F("cut_duration: "));
+  sender.getSerial().println(cut_duration);
+  sender.getSerial().print(F("rise_rate_threshold: "));
+  sender.getSerial().println(rise_rate_threshold);
+  sender.getSerial().print(F("update_interval: "));
+  sender.getSerial().println(update_interval);
+  sender.getSerial().print(F("active_state: "));
+  sender.getSerial().println(active_state);
+  
+}
+
+void cmd_set(SerialCommands& sender, Args& args) {
+  sender.listAllCommands(subCommands, sizeof(subCommands) / sizeof(Command));
+}
+
+void cmd_set_unit_id(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(0*sizeof(unsigned int),(unsigned int)number);  // save serial number
+  unit_id = number;  // set serial in ram as well
+  sender.getSerial().print(F("unit_id="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_letdown_delay(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(1*sizeof(unsigned int),(unsigned int)number);  // save number
+  letdown_delay = number;  // set in ram as well
+  sender.getSerial().print(F("letdown_delay="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_letdown_duration(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(2*sizeof(unsigned int),(unsigned int)number);  // save number
+  letdown_duration = number;  // set in ram as well
+  sender.getSerial().print(F("letdown_duration="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_max_flight_duration(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(3*sizeof(unsigned int),(unsigned int)number);  // save number
+  max_flight_duration = number;  // set in ram as well
+  sender.getSerial().print(F("max_flight_duration="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_cut_pressure(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(4*sizeof(unsigned int),(unsigned int)number);  // save number
+  cut_pressure = number;  // set in ram as well
+  sender.getSerial().print(F("cut_pressure="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_cut_duration(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(5*sizeof(unsigned int),(unsigned int)number);  // save number
+  cut_duration = number;  // set in ram as well
+  sender.getSerial().print(F("cut_duration="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_rise_rate_threshold(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(6*sizeof(unsigned int),(unsigned int)number);  // save number
+  rise_rate_threshold = number;  // set in ram as well
+  sender.getSerial().print(F("rise_rate_threshold="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_update_interval(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(7*sizeof(unsigned int),(unsigned int)number);  // save serial number
+  update_interval = number;  // set in ram as well
+  sender.getSerial().print(F("update_interval="));
+  sender.getSerial().println(number);
+}
+
+char buffer[80];  // a buffer big enough to hold serial commands or reminder prompts
+SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command),
+                              buffer, sizeof(buffer));
+
+char nmeaBuffer[85];  // a buffer big enough to hold largest expected NMEA sentence
+MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
 
 void setup() {
+  // configure control ports and make sure they're off
   pinMode(MOTOR, OUTPUT);  // motor control port
   digitalWrite(MOTOR, LOW);  // motor off
   pinMode(CUTTER, OUTPUT);  // cutter control port
   digitalWrite(CUTTER, LOW);  // cutter off
 
+  delay(150);  // avoid double setup() when programming
+  
   // set up output indicator LED
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);  // blip blip on boot
@@ -105,18 +301,68 @@ void setup() {
   delay(50);
   digitalWrite(LED_BUILTIN, LOW);  
 
+  // set serial port baud rates
+  Serial.begin(9600);  // hardware serial is connected to sat radio and/or programming FTDI cable
+  gpsSerial.begin(9600);
+
   // calculate filter coefficients
   //  (could be done statically if N is fixed)
-
   for (int i=0; i<N; i++) {
     //filter[i] = (double)( -(((double)(i-((N-1)/2))/(double)N)) );
     //filter[i] = 1;
-    filter[i] = -(12.0*(double)i-6.0*((double)N-1.0)) / ((double)N*((double)N*(double)N-1.0));
-    //Serial.println(1000*filter[i]);
-    filter[i] = 10000*filter[i];  // scale filter coefficients, delta Pressure / sample period
+    // filter coeffs with double -- works
+    // filter[i] = -(12.0 * (double)i-6.0 * ((double)N-1.0)) / ((double)N * ((double)N*(double)N - 1.0)); // - (12*i - 6*(N-1))   /   N*(N^2-1)
+    // filter[i] = 10000*filter[i];  // scale filter coefficients, delta Pressure / sample period
+    // try filter coeefs with longs, 1000000 is in there to ensure the coefficients don't get wiped out due to lack of precision
+    filter[i] = (-1000000*(12.0 * (long)i-6.0 * ((long)N-1.0))) / ((long)N * ((long)N*(long)N - 1.0)); // - (12*i - 6*(N-1))   /   N*(N^2-1)
+    if (DEBUG_SENSOR) {
+      Serial.print(i);
+      Serial.print(F(": "));
+      Serial.println(filter[i]);
+    }
   }
-      
-  Serial.begin(115200);
+
+  // read parameters from EEPROM
+  // parameters to adjust for flight 
+
+  // unit address/ serial number
+  EEPROM.get(0*sizeof(unsigned int),unit_id);
+
+  // check for uninitialized EEPROM
+  if (unit_id==65535) {  // not initialized, so lets initialize it
+    EEPROM.put(1*sizeof(unsigned int), (unsigned int)30);  // letdown_delay
+    EEPROM.put(2*sizeof(unsigned int), (unsigned int)30);  // letdown_duration
+    EEPROM.put(3*sizeof(unsigned int), (unsigned int)0);   // max_flight_duration
+    EEPROM.put(4*sizeof(unsigned int), (unsigned int)0);   // cut_pressure
+    EEPROM.put(5*sizeof(unsigned int), (unsigned int)30);   // cut_duration
+    EEPROM.put(6*sizeof(unsigned int), (unsigned int)500);  // rise_rate_threshold
+    EEPROM.put(7*sizeof(unsigned int), (unsigned int)120);  // update_interval
+    EEPROM.put(0*sizeof(unsigned int), (unsigned int)0);    // unit_id 0=UNSET
+    unit_id = 0;
+  }
+
+  // how many seconds before activation of the let down motor
+  EEPROM.get(1*sizeof(unsigned int),letdown_delay);
+
+  // how long to run the motor (seconds)
+  EEPROM.get(2*sizeof(unsigned int),letdown_duration);
+
+  // when to terminate the flight (seconds)
+  EEPROM.get(3*sizeof(unsigned int),max_flight_duration);
+
+  // pressure at which to cut, mbar
+  EEPROM.get(4*sizeof(unsigned int),cut_pressure);
+
+  // how long to cut (seconds)
+  EEPROM.get(5*sizeof(unsigned int),cut_duration);
+
+  // rise rate to trigger event. 
+  EEPROM.get(6*sizeof(unsigned int),rise_rate_threshold);
+
+  // update interval
+  EEPROM.get(7*sizeof(unsigned int),update_interval);
+  
+#ifdef BMP180  
   while(!bmp.begin()) {
     Serial.println("Could not find a valid BMP085/180 sensor, check wiring");
     for(int i=0; i<4; i++) {
@@ -125,53 +371,79 @@ void setup() {
       digitalWrite(LED_BUILTIN, LOW);
       delay(50);
     }
-    delay(200);  // give an extra time between the 4 pulses
+    delay(400);  // give an extra time between the 4 pulses
   }
+#endif
 
- Serial.println("***");
+ 
+ if (DEBUG) {
+  serialCommands.getSerial().println(F("Starting"));
+ }
   
-   // print out a bunch of zeros for the sake of simple arduino serial plotter
-  //for (int i=0; i<500; i++) {
-  //  Serial.println("0");
- // }
+ if (DEBUG_PLOT) {  // print out a bunch of zeros for the sake of simple arduino serial plotter
+   for (int i=0; i<500; i++) {
+     Serial.println("0");
+   }
+ } 
 
+/** if (0) {  // wierd stuff
   base_pressure = 0;  // calculate base pressure for plotting later, average of several readings
   for (int i=0; i<N*2; i++) {
     // WHY DO I DO THIS WEIRD THING ABOUT SAMPLE[I/2]????? maybe to get more samples for base pressure?
-    sample[i/2] = bmp.readPressure()/(double)100.0;  // read pressure in Pa, convert to mbar because we like mbar
+#ifdef BMP180
+    //sample[i/2] = bmp.readPressure()/(double)100.0;  // read pressure in Pa, convert to mbar because we like mbar
+    sample[i/2] = (long)bmp.readPressure();  // read pressure in Pa, mbar * 100
+#else
+    sample[i/2] = (long)97400;
+#endif
     base_pressure += sample[i/2];  // base_pressure is only used for arduino simple serial plotter
     //sample[i] = 0;
     //Serial.println(sample[i/2]); // pressure in mbar
-    delay(T);
+    //delay(T);
   }
   base_pressure /= N*2;
+} **/
+
+  // pre-fill sample array with pressures
+  for (int i=0; i<N; i++) {
+    sample[i] = (long)bmp.readPressure();  // read pressure in Pa, mbar * 100
+    base_pressure += sample[i];  // base_pressure is only used for arduino simple serial plotter
+  }
+  base_pressure /= N;  // base_pressure is average of N readings
+
+  if (DEBUG) {
+    Serial.println("***");
+  }
   
-  //Serial.println("***");
   n = 0;  // oldest sample, first to be replaced in buffer; n is the index into the circular buffer of pressures
 
   // set initial state of controller
   active_state = PRELAUNCH;
-  // LED blinky parameters
+  // LED blinky parameters for initial state
   LED_period = 1000;  
   LED_duration = 50;
   
 }
 
 void loop() {
-  double rise_rate;
-  double current_pressure;
-  double pressure_sample;
-  static unsigned long launch_time;
+  long rise_rate;
+  long current_pressure;
+  long pressure_sample;
   static unsigned long cut_time;
+  static unsigned long last_update; 
 
-  // read GPS string/update GPS structure here
   // read command from satellite radio
   //    if cut command received, active_state = CUT_INIT
   //    if PING command received, return PONG response
-
-  if (millis() % (1000*UPDATE_INTERVAL)) {
-    // send position/alt/pressure/temp etc update here
-    // need flag so message is send once per interval
+  //    see command[] array for full list; help displays list
+  serialCommands.readSerial();
+  
+  // read GPS string/update GPS structure here
+  while (gpsSerial.available()) {
+    if (nmea.process(gpsSerial.read())) {
+      // do something if a new NMEA sentence has arrived
+      // serialCommands.getSerial().println(nmea.getSecond());
+    }
   }
   
   // read new pressure into circular buffer position n
@@ -182,8 +454,11 @@ void loop() {
   //  scale rise_rate to mbar/sec??
   // that's the rise/fall rate. rise is positive, fall negative
 
-
-  pressure_sample = bmp.readPressure()/(double)100.0;
+#ifdef BMP180
+  pressure_sample = (long)bmp.readPressure();  // pressure in Pa (~97000 Pa in Norman, OK)
+#else
+  pressure_sample = (long)97400;
+#endif
   sample[n] = pressure_sample;
   
   //Serial.print((sample[n]-base_pressure)*25);  // scaled and shifted for serial plotter
@@ -216,72 +491,100 @@ void loop() {
     }
   } 
 
-  current_pressure /= N;
+  current_pressure /= N;  // moving average of pressure
+  rise_rate /= 1000;  // rise_rate scaled to make up for integer filter coefficients
   
-  if (1) {
-    Serial.print("T: ");
+  if (DEBUG_SENSOR) {
+    Serial.print(F("Time: "));
     Serial.print(millis());
-    Serial.print("\t");
-    Serial.print("PR: ");
+    Serial.print(F("\t"));
+    Serial.print(F("AvePres: "));
     Serial.print(current_pressure);
-    Serial.print("\t");
-    Serial.print("PS: ");
+    Serial.print(F("\t"));
+    Serial.print(F("PressSamp: "));
     Serial.print(pressure_sample);
-    Serial.print("\t");
-    Serial.print("RR: ");
+    Serial.print(F("\t"));
+    Serial.print(F("RiseRate: "));
     Serial.println(rise_rate);
   }
-  
-  //rise_rate *= 1000;
 
+  // send status message periodically via HW serial / satellite
+  if ((millis() % (1000*update_interval)) < last_update) {
+    serialCommands.getSerial().print(millis());
+    serialCommands.getSerial().print(F(","));
+    serialCommands.getSerial().print(active_state);
+    serialCommands.getSerial().print(F(","));
+    serialCommands.getSerial().print(nmea.getMinute());
+    serialCommands.getSerial().print(F(":"));
+    serialCommands.getSerial().print(nmea.getSecond());
+    serialCommands.getSerial().print(F(","));
+    serialCommands.getSerial().print(current_pressure);
+    serialCommands.getSerial().print(F(","));
+    serialCommands.getSerial().print(rise_rate);
+    serialCommands.getSerial().print(F(","));
+    serialCommands.getSerial().print(nmea.getLatitude());
+    serialCommands.getSerial().print(F(","));
+    serialCommands.getSerial().println(nmea.getLongitude());
+    last_update = 0;
+  } else {
+    // detect update time rollover
+    last_update = millis() % (1000*update_interval);
+  }
+  
   // LED update
   digitalWrite(LED_BUILTIN, (millis() % LED_period) < LED_duration);
   
   switch (active_state) {
     case PRELAUNCH:  // short flash, 1Hz
-       if (rise_rate > (double)RISE_RATE_THRESHOLD) {
+       if (rise_rate > (long)rise_rate_threshold) {
          launch_time = (millis()-(unsigned long)FILTER_DELAY);
          LED_period = 500;  // long slow blink
-         LED_duration = 400;
-         active_state = LETDOWN_DELAY;
-         Serial.print("LAUNCH ESTIMATE: ");
-         Serial.println(launch_time);
-         Serial.print("LAUNCH DETECT: ");
-         Serial.println(millis());
+         LED_duration = 450;
+         active_state = LETDOWN_INIT;
+         if (DEBUG) {
+           Serial.print(F("LAUNCH ESTIMATE: "));
+           Serial.println(launch_time);
+           Serial.print(F("LAUNCH DETECT: "));
+           Serial.println(millis());
+         }
        }
        break;
        
-    case LETDOWN_DELAY:  // long flashes 2Hz
-       if ( ((millis()-(unsigned long)launch_time)) > (unsigned long)LET_DOWN_DELAY) {
+    case LETDOWN_INIT:  // long flashes 2Hz
+       if ( ((millis()-(unsigned long)launch_time)) > (unsigned long)letdown_delay*1000) {
           digitalWrite(CUTTER, LOW);
           digitalWrite(MOTOR, HIGH);
           LED_period = 100;
           LED_duration = 50; 
           active_state = LETDOWN_ACTIVE;
-          Serial.print("LETDOWN ON: ");
-          Serial.println(millis());
+          if (DEBUG) {
+            Serial.print(F("LETDOWN ON: "));
+            Serial.println(millis());
+          }
        }
        break;
        
     case LETDOWN_ACTIVE:  // letting down, 10Hz flashes
-       if ( (millis()-(unsigned long)launch_time) > ((unsigned long)LET_DOWN_DELAY + (unsigned long)LET_DOWN_DURATION) ) {
+       if ( (millis()-(unsigned long)launch_time) > ((unsigned long)letdown_delay*1000 + (unsigned long)letdown_duration*1000) ) {
           digitalWrite(MOTOR, LOW);
           LED_period = 2000;
           LED_duration = 50;
           active_state = FLIGHT;
-          Serial.print("LETDOWN STOPPED: ");
-          Serial.println(millis());
+          if (DEBUG) {
+            Serial.print(F("LETDOWN STOPPED: "));
+            Serial.println(millis());
+          }
        }
        break;
        
     case FLIGHT:  // short flash, 0.5Hz
-       // check time limit
-       if ( (millis()-(unsigned long)launch_time) > (unsigned long)MAX_FLIGHT_DURATION ) {
+       // check time limit; set max_flight_duration to 0 to disable time initiated cut
+       if ((max_flight_duration>0) && ( (millis()-(unsigned long)launch_time) > (unsigned long)max_flight_duration*1000 )) {
           active_state = CUT_INIT;
           break;
        }
-       // check pressure ceiling
-       if (current_pressure < (double)CUT_PRESSURE) {
+       // check pressure ceiling; set cut_pressure to 0 to disable pressure initiated cut
+       if ((cut_pressure>0) && (current_pressure < (long)cut_pressure*100)) {
           active_state = CUT_INIT;
           break;
        }
@@ -295,18 +598,22 @@ void loop() {
        LED_period = 200;  
        LED_duration = 100;
        active_state = CUT_ACTIVE;
-       Serial.print("CUTDOWN ON: ");
-       Serial.println(millis()-(unsigned long)launch_time);
+       if (DEBUG) {
+         Serial.print(F("CUTDOWN ON: "));
+         Serial.println(millis()-(unsigned long)launch_time);
+       }
        break;
        
     case CUT_ACTIVE:  // short flash, 5 Hz.
-       if( (millis()-(unsigned long)cut_time) > (unsigned long)CUT_DURATION) {
+       if( (millis()-(unsigned long)cut_time) > (unsigned long)cut_duration*1000) {
           digitalWrite(CUTTER, LOW);
           LED_period = 4000;
           LED_duration = 100;
           active_state = POST_FLIGHT;
-          Serial.print("CUTDOWN OFF: ");
-          Serial.println(millis()-(unsigned long)launch_time);
+          if (DEBUG) {
+            Serial.print(F("CUTDOWN OFF: "));
+            Serial.println(millis()-(unsigned long)launch_time);
+          }
        }
        break;
        
@@ -319,8 +626,8 @@ void loop() {
        break;
   }
 
-  if (0) { 
-    Serial.println("");
+  if (DEBUG_SENSOR) { 
+    Serial.println(F(""));
   }
   
   delay(T);
