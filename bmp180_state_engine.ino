@@ -514,9 +514,17 @@ void loop() {
     serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().print(active_state);
     serialCommands.getSerial().print(F(","));
-    serialCommands.getSerial().print(nmea.getMinute());
+    int c = nmea.getMinute();
+    if (c<10) {
+      serialCommands.getSerial().write(48); // leading zero
+    }
+    serialCommands.getSerial().print(c);
     serialCommands.getSerial().print(F(":"));
-    serialCommands.getSerial().print(nmea.getSecond());
+    c = nmea.getSecond();
+    if (c<10) {
+      serialCommands.getSerial().write(48); // leading zero
+    }
+    serialCommands.getSerial().print(c);
     serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().print(current_pressure);
     serialCommands.getSerial().print(F(","));
