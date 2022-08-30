@@ -24,6 +24,7 @@ OFF - between rise/sink thresholds
 #include <NeoSWSerial.h>
 #include <MicroNMEA.h>
 #include <EEPROM.h>
+#include <math.h>
 
 // debug state engine
 #define DEBUG (1)
@@ -275,6 +276,24 @@ void cmd_set_update_interval(SerialCommands& sender, Args& args) {
   sender.getSerial().println(number);
 }
 
+double haversine(double lat1, double lon1, double lat2, double lon2) {
+  const double earth_radius = 6371.009;  // earth radius in km
+  const double pi = 3.1415926535897932384626433832795;
+
+  // convert millionths of degrees to radians
+  double dlat = ((double)(lat2-lat1)/(double)1000000) * (pi/180.0);
+  double dlon = ((double)(lon2-lon1)/(double)1000000) * (pi/180.0);
+  lat1 = (lat1/(double)1000000) * (pi/180.0);
+  lat2 = (lat2/(double)1000000) * (pi/180.0);
+
+  double dist = 2*earth_radius*asin(
+    sqrt( pow(sin( (dlat/2)),2)
+         +pow(sin( (dlon/2)),2)
+         *cos(lat1)*cos(lat2)));
+
+  return(dist);  // great circle distance in km
+}
+
 char buffer[80];  // a buffer big enough to hold serial commands or reminder prompts
 SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command),
                               buffer, sizeof(buffer));
@@ -422,6 +441,15 @@ void setup() {
   // LED blinky parameters for initial state
   LED_period = 1000;  
   LED_duration = 50;
+
+  if (1) {
+    const long lat1 = 51500700;
+    const long lon1 =  0124600;
+    const long lat2 = 40689200;
+    const long lon2 = 74044500;
+    Serial.print(F("haversine test (5574.84): "));
+    Serial.println(haversine(lat1,lon1,lat2,lon2));
+  }
   
 }
 
