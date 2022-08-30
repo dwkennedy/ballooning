@@ -137,7 +137,7 @@ Command subCommands [] {
   COMMAND(cmd_set_cut_pressure, "cut_pressure", ArgType::Int, nullptr, "pressure to terminate flight, mbar"),
   COMMAND(cmd_set_cut_duration, "cut_duration", ArgType::Int, nullptr, "how long to activate cutter, secs"),
   COMMAND(cmd_set_rise_rate_threshold, "rise_rate_threshold", ArgType::Int, nullptr, "let-down trigger sensitivity (~500-1000)"),
-  COMMAND(cmd_set_update_interval, "update_interval", ArgType::Int, nullptr, "how often to send beacon"),
+  COMMAND(cmd_set_update_interval, "update_interval", ArgType::Int, nullptr, "how often to send beacon, secs"),
 };
 
 Command commands[] {
@@ -335,7 +335,7 @@ void setup() {
     EEPROM.put(3*sizeof(unsigned int), (unsigned int)0);   // max_flight_duration
     EEPROM.put(4*sizeof(unsigned int), (unsigned int)0);   // cut_pressure
     EEPROM.put(5*sizeof(unsigned int), (unsigned int)30);   // cut_duration
-    EEPROM.put(6*sizeof(unsigned int), (unsigned int)500);  // rise_rate_threshold
+    EEPROM.put(6*sizeof(unsigned int), (unsigned int)800);  // rise_rate_threshold
     EEPROM.put(7*sizeof(unsigned int), (unsigned int)120);  // update_interval
     EEPROM.put(0*sizeof(unsigned int), (unsigned int)0);    // unit_id 0=UNSET
     unit_id = 0;
@@ -509,20 +509,20 @@ void loop() {
   }
 
   // send status message periodically via HW serial / satellite
-  if ((millis() % (1000*update_interval)) < last_update) {
-    serialCommands.getSerial().print(millis());
+  if (((unsigned long)millis() % ((unsigned long)1000*update_interval)) < (unsigned long)last_update) {
+    serialCommands.getSerial().print(millis()/1000);
     serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().print(active_state);
     serialCommands.getSerial().print(F(","));
     int c = nmea.getMinute();
     if (c<10) {
-      serialCommands.getSerial().write(48); // leading zero
+      serialCommands.getSerial().print(F("0")); // leading zero
     }
     serialCommands.getSerial().print(c);
     serialCommands.getSerial().print(F(":"));
     c = nmea.getSecond();
     if (c<10) {
-      serialCommands.getSerial().write(48); // leading zero
+      serialCommands.getSerial().print(F("0")); // leading zero
     }
     serialCommands.getSerial().print(c);
     serialCommands.getSerial().print(F(","));
@@ -533,11 +533,10 @@ void loop() {
     serialCommands.getSerial().print(nmea.getLatitude());
     serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().println(nmea.getLongitude());
-    last_update = 0;
-  } else {
-    // detect update time rollover
-    last_update = millis() % (1000*update_interval);
   }
+    
+  // update update time so we can detect overflow on next loop iteration
+  last_update = millis() % ((unsigned long)1000*update_interval);
   
   // LED update
   digitalWrite(LED_BUILTIN, (millis() % LED_period) < LED_duration);
