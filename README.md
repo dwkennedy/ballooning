@@ -1,2 +1,2 @@
 # ballooning
-ultimate ballooning accessory (variometer, balloon cut-down, let down reel, tracking)
+all-in-one ballooning accessory (variometer, balloon cut-down, let down reel, tracking)
