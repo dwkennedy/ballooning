@@ -47,6 +47,9 @@ OFF - between rise/sink thresholds
 // hot-wire cutter port
 #define CUTTER (3)
 
+// GPS LED port
+#define LED_GPS (4)
+
 // length of filter (N must be odd)
 #define N (63)
 
@@ -119,6 +122,9 @@ state active_state = PRELAUNCH;  // initial state
 
 int LED_period = 2000;  // interval to blink LED
 int LED_duration = 50;  // duration of LED blink
+const int GPS_LED_period = 1000;  // interval to blink GPS locked LED
+const int GPS_LED_duration = 50;  // duration to blink GPS locked LED
+
 unsigned long launch_time = 0;  // so we can time letdown and flight time
 
 void cmd_help(SerialCommands& sender, Args& args);
@@ -283,8 +289,10 @@ void cmd_set_update_interval(SerialCommands& sender, Args& args) {
   sender.getSerial().println(number);
 }
 
+// distance between points on earth in meters
+// lat/lon in millionths of degrees (divide by 1,000,000 for degrees)
 double haversine(double lat1, double lon1, double lat2, double lon2) {
-  const double earth_radius = 6371.009;  // earth radius in km
+  const double earth_radius = 6371009;  // earth radius in meters
   //const double pi180 = 3.1415926535897932384626433832795/180.0/1000000.0;
   const double pi180 = 0.000000017453292519943295769236907684886127134428718885417254560971;
 
@@ -331,14 +339,21 @@ void setup() {
   digitalWrite(CUTTER, LOW);  // cutter off
 
   delay(150);  // avoid double setup() when programming
-  
+
+  // set up GPS LED
+  pinMode(LED_GPS, OUTPUT);
   // set up output indicator LED
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);  // blip blip on boot
+  digitalWrite(LED_GPS, HIGH);
   delay(50);
-  digitalWrite(LED_BUILTIN, LOW);  
+  digitalWrite(LED_BUILTIN, HIGH);  // blip blip on boot
+  digitalWrite(LED_GPS, LOW);  // blip blip on boot
+  delay(50);
+  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(LED_GPS, HIGH);    
   delay(50);
   digitalWrite(LED_BUILTIN, HIGH);  // blip #2
+  digitalWrite(LED_GPS, LOW);  // blip blip on boot
   delay(50);
   digitalWrite(LED_BUILTIN, LOW);  
 
@@ -479,6 +494,9 @@ void loop() {
   long rise_rate;
   long current_pressure;
   long pressure_sample;
+  long gps_launch_lat;
+  long gps_launch_lon;
+  long gps_launch_alt;
   static unsigned long cut_time;
   static unsigned long last_update; 
 
@@ -493,6 +511,11 @@ void loop() {
     if (nmea.process(gpsSerial.read())) {
       // do something if a new NMEA sentence has arrived
       // serialCommands.getSerial().println(nmea.getSecond());
+      if (nmea.isValid()) {
+        // turn on GPS valid LED
+      } else {
+        // turn off GPS valid LED
+      }
     }
   }
   
@@ -560,6 +583,7 @@ void loop() {
 
   // send status message periodically via HW serial / satellite
   if (((unsigned long)millis() % ((unsigned long)1000*update_interval)) < (unsigned long)last_update) {
+    
     serialCommands.getSerial().print(millis()/1000);
     serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().print(active_state);
@@ -582,7 +606,13 @@ void loop() {
     serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().print(nmea.getLatitude());
     serialCommands.getSerial().print(F(","));
-    serialCommands.getSerial().println(nmea.getLongitude());
+    serialCommands.getSerial().print(nmea.getLongitude());
+    serialCommands.getSerial().print(F(","));
+    if (nmea.isValid()) {
+      serialCommands.getSerial().println(haversine(gps_launch_lat,gps_launch_lon,nmea.getLatitude(),nmea.getLongitude()));
+    } else {
+      serialCommands.getSerial().println(F("nan"));  // no GPS lock, so no accurate distance available
+    }
   }
     
   // update update time so we can detect overflow on next loop iteration
@@ -590,6 +620,9 @@ void loop() {
   
   // LED update
   digitalWrite(LED_BUILTIN, (millis() % LED_period) < LED_duration);
+
+  // GPS LED update; blink if valid, otherwise off
+  digitalWrite(LED_GPS, ( nmea.isValid() && (millis() % GPS_LED_period) < GPS_LED_duration));
   
   switch (active_state) {
     case PRELAUNCH:  // short flash, 1Hz
@@ -604,6 +637,19 @@ void loop() {
            Serial.print(F("LAUNCH DETECT: "));
            Serial.println(millis());
          }
+         // turn off GPS valid LED, because at this point it's too late to get a good launch coordinate.
+         //   ... and the device is flying away before the GPS was locked.  OOPS
+       } else {
+        // update launch location if we have a lock
+        // updating many times while in prelaunch mode means we have many bites at the apple to get a good gps location
+        // altitude will be the altitude at which the filter detects a launch (in the air) but not far off
+        if (nmea.isValid()) {
+          gps_launch_lat = nmea.getLatitude();  // millionths of degrees
+          gps_launch_lon = nmea.getLongitude(); // millionths of degrees
+          nmea.getAltitude(gps_launch_alt);  // altitude MSL
+        } else {
+          // turn off GPS valid LED here
+        }
        }
        break;
        
@@ -646,6 +692,13 @@ void loop() {
           break;
        }
        // check geofence here
+       if (nmea.isValid()) {
+          // compute distance and compare to max distance downrange
+          // compare lat/lon to lat/lon min and max
+          // blink GPS valid light
+       } else {
+          // turn off GPS valid light
+       }
        break;       
        
     case CUT_INIT:
