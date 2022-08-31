@@ -1,2 +1,2 @@
 # ballooning
-Various balloon related projects (variometer, balloon cut-down, let down reel, tracking)
+ultimate ballooning accessory (variometer, balloon cut-down, let down reel, tracking)
