@@ -95,6 +95,12 @@ NeoSWSerial gpsSerial (10, 9);
 Adafruit_BMP085 bmp;
 #endif
 
+char nmeaBuffer[85];  // a buffer big enough to hold largest expected NMEA sentence
+MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
+long launch_lat;
+long launch_lon;
+long launch_alt;
+
 // vector of filter coefficients
 static long filter[N];
 
@@ -123,7 +129,7 @@ state active_state = PRELAUNCH;  // initial state
 int LED_period = 2000;  // interval to blink LED
 int LED_duration = 50;  // duration of LED blink
 const int GPS_LED_period = 1000;  // interval to blink GPS locked LED
-const int GPS_LED_duration = 50;  // duration to blink GPS locked LED
+const int GPS_LED_duration = 500;  // duration to blink GPS locked LED
 
 unsigned long launch_time = 0;  // so we can time letdown and flight time
 
@@ -192,6 +198,11 @@ void cmd_letdown(SerialCommands& sender, Args& args) {
   sender.getSerial().println(F("letdown activating in 3 secs"));
   active_state = LETDOWN_INIT;
   launch_time = millis();
+  if (nmea.isValid()) {
+    launch_lat = nmea.getLatitude();  // millionths of degrees
+    launch_lon = nmea.getLongitude(); // millionths of degrees
+    nmea.getAltitude(launch_alt);  // altitude MSL
+  }
   letdown_duration = args[0].getInt();
   letdown_delay = 3;
   LED_period = 500;  // long slow blink
@@ -289,6 +300,10 @@ void cmd_set_update_interval(SerialCommands& sender, Args& args) {
   sender.getSerial().println(number);
 }
 
+char buffer[80];  // a buffer big enough to hold serial commands or reminder prompts
+SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command),
+                              buffer, sizeof(buffer));
+
 // distance between points on earth in meters
 // lat/lon in millionths of degrees (divide by 1,000,000 for degrees)
 double haversine(double lat1, double lon1, double lat2, double lon2) {
@@ -311,12 +326,6 @@ double haversine(double lat1, double lon1, double lat2, double lon2) {
   return (dist); // great circle distance in km
 }
 
-char buffer[80];  // a buffer big enough to hold serial commands or reminder prompts
-SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command),
-                              buffer, sizeof(buffer));
-
-char nmeaBuffer[85];  // a buffer big enough to hold largest expected NMEA sentence
-MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
 
 void setup() {
   // configure control ports and make sure they're off
@@ -482,9 +491,6 @@ void loop() {
   long rise_rate;
   long current_pressure;
   long pressure_sample;
-  static long gps_launch_lat;
-  static long gps_launch_lon;
-  static long gps_launch_alt;
   static unsigned long cut_time;
   static unsigned long last_update;
 
@@ -597,7 +603,7 @@ void loop() {
     serialCommands.getSerial().print(nmea.getLongitude());
     serialCommands.getSerial().print(F(","));
     if (nmea.isValid()) {
-      serialCommands.getSerial().println(haversine(gps_launch_lat, gps_launch_lon, nmea.getLatitude(), nmea.getLongitude()));
+      serialCommands.getSerial().println(haversine(launch_lat, launch_lon, nmea.getLatitude(), nmea.getLongitude()));
     } else {
       serialCommands.getSerial().println(F("nan"));  // no GPS lock, so no accurate distance available
     }
@@ -632,11 +638,9 @@ void loop() {
         // updating many times while in prelaunch mode means we have many bites at the apple to get a good gps location
         // altitude will be the altitude at which the filter detects a launch (in the air) but not far off
         if (nmea.isValid()) {
-          gps_launch_lat = nmea.getLatitude();  // millionths of degrees
-          gps_launch_lon = nmea.getLongitude(); // millionths of degrees
-          nmea.getAltitude(gps_launch_alt);  // altitude MSL
-        } else {
-          // turn off GPS valid LED here
+          launch_lat = nmea.getLatitude();  // millionths of degrees
+          launch_lon = nmea.getLongitude(); // millionths of degrees
+          nmea.getAltitude(launch_alt);  // altitude MSL
         }
       }
       break;
