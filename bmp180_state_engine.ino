@@ -8,6 +8,11 @@ FLASH - sink detected, negative slope exceeds threshold
 OFF - between rise/sink thresholds
 */
 
+//  https://github.com/SlashDevin/NeoSWSerial
+//  https://github.com/naszly/Arduino-StaticSerialCommands
+//  https://github.com/stevemarple/MicroNMEA
+//  http://www.bamfordresearch.com/files/package_jb23_insystemmcu_index.json
+
 // if using BMP180 sensor, define this
 #define BMP180
 
@@ -20,6 +25,7 @@ OFF - between rise/sink thresholds
 #endif
 
 #include <StaticSerialCommands.h>
+// #include <SoftwareSerial.h>
 // #define _SS_MAX_RX_BUFF 128 // RX buffer size
 #include <NeoSWSerial.h>
 #include <MicroNMEA.h>
@@ -81,6 +87,7 @@ static unsigned int rise_rate_threshold;
 static unsigned int update_interval;
 
 NeoSWSerial gpsSerial (10, 9);
+// SoftwareSerial gpsSerial (10, 9);
 #ifdef BMP180
   Adafruit_BMP085 bmp;
 #endif
@@ -278,18 +285,33 @@ void cmd_set_update_interval(SerialCommands& sender, Args& args) {
 
 double haversine(double lat1, double lon1, double lat2, double lon2) {
   const double earth_radius = 6371.009;  // earth radius in km
-  const double pi = 3.1415926535897932384626433832795;
+  //const double pi180 = 3.1415926535897932384626433832795/180.0/1000000.0;
+  const double pi180 = 0.000000017453292519943295769236907684886127134428718885417254560971;
 
   // convert millionths of degrees to radians
-  double dlat = ((double)(lat2-lat1)/(double)1000000) * (pi/180.0);
-  double dlon = ((double)(lon2-lon1)/(double)1000000) * (pi/180.0);
-  lat1 = (lat1/(double)1000000) * (pi/180.0);
-  lat2 = (lat2/(double)1000000) * (pi/180.0);
+  double dlat = (double)(lat2-lat1) * pi180;
+  double dlon = (double)(lon2-lon1) * pi180;
+  lat1 = lat1 * pi180;
+  lat2 = lat2 * pi180;
 
+  Serial.print("lat1: ");
+  Serial.println(lat1,10);
+  Serial.print("lat2: ");
+  Serial.println(lat2,10);
+  Serial.print("dlat: ");
+  Serial.println(dlat,10);
+  Serial.print("dlon: ");
+  Serial.println(dlon,10);
+  Serial.print("pow: "),
+  Serial.println(pow(sin(dlat/2),2)+pow(sin(dlon/2),2)*cos(lat1)*cos(lat2), 10);
+         
   double dist = 2*earth_radius*asin(
     sqrt( pow(sin( (dlat/2)),2)
          +pow(sin( (dlon/2)),2)
          *cos(lat1)*cos(lat2)));
+
+  Serial.print("dst: ");
+  Serial.println(dist,10);
 
   return(dist);  // great circle distance in km
 }
@@ -443,10 +465,10 @@ void setup() {
   LED_duration = 50;
 
   if (1) {
-    const long lat1 = 51500700;
-    const long lon1 =  0124600;
-    const long lat2 = 40689200;
-    const long lon2 = 74044500;
+    const double lat1 = 51500700;
+    const double lon1 =  0124600;
+    const double lat2 = 40689200;
+    const double lon2 = 74044500;
     Serial.print(F("haversine test (5574.84): "));
     Serial.println(haversine(lat1,lon1,lat2,lon2));
   }
