@@ -8,13 +8,26 @@
   OFF - between rise/sink thresholds
 */
 
+/*
+   rise_rate = sum (filter[i]*sample[(i+n)%N)  
+     filter 16 bit (+/- 32768) 16 bits  +/- 64 so 7 bits
+     sample 32 bit (0-120000)  18 bits
+     N 33                       5 bits
+*/
+
 //  https://github.com/SlashDevin/NeoSWSerial
 //  https://github.com/naszly/Arduino-StaticSerialCommands
 //  https://github.com/stevemarple/MicroNMEA
 //  http://www.bamfordresearch.com/files/package_jb23_insystemmcu_index.json
 
-// if using BMP180 sensor, define this
-#define BMP180
+// if using BMP180 pressure sensor
+//#define BMP180
+
+// if using MPR pressure sensor
+#define MPR
+
+// if using FAKE pressure for testing
+//#define FAKE_PRESSURE
 
 #ifdef BMP180
 #include <Adafruit_BMP085.h>
@@ -23,6 +36,11 @@
 // Connect SCL to i2c clock - on '168/'328 Arduino Uno/Duemilanove/etc thats Analog 5
 // Connect SDA to i2c data - on '168/'328 Arduino Uno/Duemilanove/etc thats Analog 4
 #endif
+
+#ifdef MPR
+#include <Wire.h>
+#include <SparkFun_MicroPressure.h>
+#endif 
 
 #include <StaticSerialCommands.h>
 // #include <SoftwareSerial.h>
@@ -41,6 +59,12 @@
 // debug plot the rise_rate
 #define DEBUG_PLOT (0)
 
+// print out average loop time in ms, current loop time
+#define DEBUG_SAMPLE_INTERVAL (0)
+
+// uncomment to calculate filter coefficents and dump to serial
+//#define DEBUG_FILTER (1)
+
 // Motor port
 #define MOTOR (2)
 
@@ -51,17 +75,16 @@
 #define LED_GPS (4)
 
 // length of filter (N must be odd)
-#define N (63)
+#define N (33)
 
-// filter delay in milliseconds, approx
-#define FILTER_DELAY (2500)
+// make this interval between samples; filter total time is N*T
+#define T (333)
 
-// sample period in msec (loop delay in excess of pressure reading delay, 32ms for MS5611, ~68ms for BMP180)
-// integration period is N*(T+pressure reading delay) msec.  63*(10+68) = 4914 ms
-#define T (10)
+// filter delay in milliseconds
+#define FILTER_DELAY (N*T)
 
-// sink rate to trigger event - not presently used; could be used to detect balloon pop
-#define SINK_RATE_THRESHOLD (-500)
+// sink rate to trigger event - not presently used; could be used to detect balloon pop.  less than -100 could be freefall
+#define SINK_RATE_THRESHOLD (-100)
 
 // parameters to adjust for flight
 // address/serial number of unit
@@ -82,34 +105,63 @@ static unsigned int cut_pressure;
 // how long to cut (seconds)
 static unsigned int cut_duration;
 
-// rise rate to trigger event. should be higher than noise but less than balloon rise rate. units: Pa/second? i think. depends on sample rate and filter
-// elevator in NWC peaks out around 1000.  noise level is +/- 150
+// rise rate to trigger event. should be higher than noise but less than balloon rise rate. depends on sample rate and filter
+// elevator in NWC peaks out around 60.  noise level is +/- 10
 static unsigned int rise_rate_threshold;
 
 // how often to send GPS packet
 static unsigned int update_interval;
 
+// max distance balloon can travel before cut (over surface of earth, in meters)
+static unsigned long max_distance;
+
+// geofencing min/max lat/long
+static long min_latitude;
+static long max_latitude;
+static long min_longitude;
+static long max_longitude;
+
 NeoSWSerial gpsSerial (10, 9);
 // SoftwareSerial gpsSerial (10, 9);
+
 #ifdef BMP180
 Adafruit_BMP085 bmp;
 #endif
 
+#ifdef MPR
+/*
+ * Initialize Constructor
+ * Optional parameters:
+ *  - EOC_PIN: End Of Conversion (defualt: -1)
+ *  - RST_PIN: Reset (defualt: -1)
+ *  - MIN_PSI: Minimum Pressure (default: 0 PSI)
+ *  - MAX_PSI: Maximum Pressure (default: 25 PSI)
+ */
+//SparkFun_MicroPressure mpr(EOC_PIN, RST_PIN, MIN_PSI, MAX_PSI);
+SparkFun_MicroPressure mpr; // Use default values with reset and EOC pins unused
+#endif
+
 char nmeaBuffer[85];  // a buffer big enough to hold largest expected NMEA sentence
 MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
-long launch_lat;
-long launch_lon;
-long launch_alt;
+
+static long launch_lat;
+static long launch_lon;
+static long launch_alt;
 
 // vector of filter coefficients
-static long filter[N];
+#ifdef DEBUG_FILTER
+int filter[N];
+#else
+const int filter[N] = {53,50,46,43,40,36,33,30,26,23,20,16,13,10,6,3,
+                       0,-3,-6,-10,-13,-16,-20,-23,-26,-30,-33,-36,-40,-43,-46,-50,-53};
+#endif
 
 // circular buffer of N samples
-static long sample[N];
-static long base_pressure;
+long sample[N];
+long base_pressure;
 
 // index of circular buffer, 0 to N-1
-static unsigned int n = 0;
+int n = 0;
 
 // state engine labels
 enum state
@@ -128,8 +180,8 @@ state active_state = PRELAUNCH;  // initial state
 
 int LED_period = 2000;  // interval to blink LED
 int LED_duration = 50;  // duration of LED blink
-const int GPS_LED_period = 1000;  // interval to blink GPS locked LED
-const int GPS_LED_duration = 500;  // duration to blink GPS locked LED
+const int GPS_LED_period = 500;  // interval to blink GPS locked LED
+const int GPS_LED_duration = 250;  // duration to blink GPS locked LED
 
 unsigned long launch_time = 0;  // so we can time letdown and flight time
 
@@ -148,6 +200,11 @@ void cmd_set_cut_pressure(SerialCommands& sender, Args& args);
 void cmd_set_cut_duration(SerialCommands& sender, Args& args);
 void cmd_set_rise_rate_threshold(SerialCommands& sender, Args& args);
 void cmd_set_update_interval(SerialCommands& sender, Args& args);
+void cmd_set_max_distance(SerialCommands& sender, Args& args);
+void cmd_set_min_latitude(SerialCommands& sender, Args& args);
+void cmd_set_max_latitude(SerialCommands& sender, Args& args);
+void cmd_set_min_longitude(SerialCommands& sender, Args& args);
+void cmd_set_max_longitude(SerialCommands& sender, Args& args);
 
 Command subCommands [] {
   COMMAND(cmd_set_unit_id, "unit_id", ArgType::Int, nullptr, "unique address"),
@@ -158,6 +215,11 @@ Command subCommands [] {
   COMMAND(cmd_set_cut_duration, "cut_duration", ArgType::Int, nullptr, "how long to activate cutter, secs"),
   COMMAND(cmd_set_rise_rate_threshold, "rise_rate_threshold", ArgType::Int, nullptr, "let-down trigger sensitivity (~500-1000)"),
   COMMAND(cmd_set_update_interval, "update_interval", ArgType::Int, nullptr, "how often to send beacon, secs"),
+  COMMAND(cmd_set_max_distance, "max_distance", ArgType::Int, nullptr, "distance from launch to terminate flight, meters"),
+  COMMAND(cmd_set_min_latitude, "min_latitude", ArgType::Int, nullptr, "minimum latitude geofence, degrees X 10^6 N"),
+  COMMAND(cmd_set_max_latitude, "max_latitude", ArgType::Int, nullptr, "maximum latitude geofence, degrees X 10^6 N"),
+  COMMAND(cmd_set_min_longitude, "min_longitude", ArgType::Int, nullptr, "minimum longitude geofence, degrees X 10^6 E"),
+  COMMAND(cmd_set_max_longitude, "max_longitude", ArgType::Int, nullptr, "maximum longitude geofence, degrees X 10^6 E"),
 };
 
 Command commands[] {
@@ -227,6 +289,16 @@ void cmd_show(SerialCommands& sender, Args& args) {
   sender.getSerial().println(rise_rate_threshold);
   sender.getSerial().print(F("update_interval: "));
   sender.getSerial().println(update_interval);
+  sender.getSerial().print(F("max_distance: "));
+  sender.getSerial().println(max_distance);
+  sender.getSerial().print(F("min_latitude: "));
+  sender.getSerial().println(min_latitude);
+  sender.getSerial().print(F("max_latitude: "));
+  sender.getSerial().println(max_latitude);
+  sender.getSerial().print(F("min_longitude: "));
+  sender.getSerial().println(min_longitude);
+  sender.getSerial().print(F("max_longitude: "));
+  sender.getSerial().println(max_longitude);
   sender.getSerial().print(F("active_state: "));
   sender.getSerial().println(active_state);
 
@@ -237,7 +309,7 @@ void cmd_set(SerialCommands& sender, Args& args) {
 }
 
 void cmd_set_unit_id(SerialCommands& sender, Args& args) {
-  auto number = args[0].getInt();
+  unsigned int number = args[0].getInt();
   EEPROM.put(0 * sizeof(unsigned int), (unsigned int)number); // save serial number
   unit_id = number;  // set serial in ram as well
   sender.getSerial().print(F("unit_id="));
@@ -245,7 +317,7 @@ void cmd_set_unit_id(SerialCommands& sender, Args& args) {
 }
 
 void cmd_set_letdown_delay(SerialCommands& sender, Args& args) {
-  auto number = args[0].getInt();
+  unsigned int number = args[0].getInt();
   EEPROM.put(1 * sizeof(unsigned int), (unsigned int)number); // save number
   letdown_delay = number;  // set in ram as well
   sender.getSerial().print(F("letdown_delay="));
@@ -294,9 +366,50 @@ void cmd_set_rise_rate_threshold(SerialCommands& sender, Args& args) {
 
 void cmd_set_update_interval(SerialCommands& sender, Args& args) {
   auto number = args[0].getInt();
-  EEPROM.put(7 * sizeof(unsigned int), (unsigned int)number); // save serial number
+  EEPROM.put(7 * sizeof(unsigned int), (unsigned int)number); // save number
   update_interval = number;  // set in ram as well
   sender.getSerial().print(F("update_interval="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_max_distance(SerialCommands& sender, Args& args) {
+  unsigned long number = args[0].getInt();
+  EEPROM.put(8 * sizeof(unsigned int) + 0 * sizeof(long), (unsigned long)number); // save unsigned long distance
+  max_distance = number;  // set in ram as well
+  sender.getSerial().print(F("max_distance="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_min_latitude(SerialCommands& sender, Args& args) {
+  long number = args[0].getInt();
+  EEPROM.put(8 * sizeof(unsigned int) + 1 * sizeof(long), (long)number); // save long min_latitude
+  min_latitude = number;  // set in ram as well
+  sender.getSerial().print(F("min_latitude="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_max_latitude(SerialCommands& sender, Args& args) {
+  long number = args[0].getInt();
+  EEPROM.put(8 * sizeof(unsigned int) + 2 * sizeof(long), (long)number); // save long max_latitude
+  max_latitude = number;  // set in ram as well
+  sender.getSerial().print(F("max_latitude="));
+  sender.getSerial().println(number);
+}
+
+
+void cmd_set_min_longitude(SerialCommands& sender, Args& args) {
+  long number = args[0].getInt();
+  EEPROM.put(8 * sizeof(unsigned int) + 3 * sizeof(long), (long)number); // save long min_longitude
+  min_longitude = number;  // set in ram as well
+  sender.getSerial().print(F("min_longitude="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_max_longitude(SerialCommands& sender, Args& args) {
+  long number = args[0].getInt();
+  EEPROM.put(8 * sizeof(unsigned int) + 4 * sizeof(long), (long)number); // save long max_longitude
+  max_longitude = number;  // set in ram as well
+  sender.getSerial().print(F("max_longitude="));
   sender.getSerial().println(number);
 }
 
@@ -328,51 +441,60 @@ double haversine(double lat1, double lon1, double lat2, double lon2) {
 
 
 void setup() {
+  
   // configure control ports and make sure they're off
   pinMode(MOTOR, OUTPUT);  // motor control port
   digitalWrite(MOTOR, LOW);  // motor off
   pinMode(CUTTER, OUTPUT);  // cutter control port
   digitalWrite(CUTTER, LOW);  // cutter off
 
-  delay(150);  // avoid double setup() when programming
-
   // set up GPS LED
   pinMode(LED_GPS, OUTPUT);
   // set up output indicator LED
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_GPS, HIGH);
-  delay(50);
+  delay(150);
   digitalWrite(LED_BUILTIN, HIGH);  // blip blip on boot
   digitalWrite(LED_GPS, LOW);  // blip blip on boot
-  delay(50);
+  delay(150);
   digitalWrite(LED_BUILTIN, LOW);
   digitalWrite(LED_GPS, HIGH);
-  delay(50);
+  delay(150);
   digitalWrite(LED_BUILTIN, HIGH);  // blip #2
   digitalWrite(LED_GPS, LOW);  // blip blip on boot
-  delay(50);
+  delay(150);
   digitalWrite(LED_BUILTIN, LOW);
 
   // set serial port baud rates
   Serial.begin(9600);  // hardware serial is connected to sat radio and/or programming FTDI cable
   gpsSerial.begin(9600);
 
+  if (DEBUG) {
+    Serial.println(F("*** Start setup()"));
+  }
+  
   // calculate filter coefficients
   //  (could be done statically if N is fixed)
-  for (int i = 0; i < N; i++) {
-    //filter[i] = (double)( -(((double)(i-((N-1)/2))/(double)N)) );
-    //filter[i] = 1;
-    // filter coeffs with double -- works
-    // filter[i] = -(12.0 * (double)i-6.0 * ((double)N-1.0)) / ((double)N * ((double)N*(double)N - 1.0)); // - (12*i - 6*(N-1))   /   N*(N^2-1)
-    // filter[i] = 10000*filter[i];  // scale filter coefficients, delta Pressure / sample period
-    // try filter coeefs with longs, 1000000 is in there to ensure the coefficients don't get wiped out due to lack of precision
-    filter[i] = (-1000000 * (12.0 * (long)i - 6.0 * ((long)N - 1.0))) / ((long)N * ((long)N * (long)N - 1.0)); // - (12*i - 6*(N-1))   /   N*(N^2-1)
-    if (DEBUG_SENSOR) {
-      Serial.print(i);
-      Serial.print(F(": "));
-      Serial.println(filter[i]);
+#ifdef DEBUG_FILTER
+    Serial.print(F("filter[] = {"));
+
+    for (int i = 0; i < N; i++) {
+      //filter[i] = (double)( -(((double)((double)i-(((double)N-1L)/2L))/(double)N)) );
+      //filter[i] = 1;
+      // filter coeffs with double -- works
+      // filter[i] = -(12.0 * (double)i-6.0 * ((double)N-1.0)) / ((double)N * ((double)N*(double)N - 1.0)); // - (12*i - 6*(N-1))   /   N*(N^2-1)
+      // filter[i] = 10000*filter[i];  // scale filter coefficients, delta Pressure / sample period
+      // try filter coeefs with longs, 1000000 is in there to ensure the coefficients don't get wiped out due to lack of precision
+      filter[i] = (-10000.0 * (12.0 * (double)i - 6.0 * ((double)N - 1.0))) / ((double)N * ((double)N * (double)N - 1.0));
+      if (i<(N-1)) {
+        Serial.print(filter[i]);
+        Serial.print(F(","));
+      }
     }
-  }
+
+    Serial.print(filter[N-1]);
+    Serial.println(F("};"));
+#endif
 
   // read parameters from EEPROM
   // parameters to adjust for flight
@@ -387,8 +509,13 @@ void setup() {
     EEPROM.put(3 * sizeof(unsigned int), (unsigned int)0); // max_flight_duration
     EEPROM.put(4 * sizeof(unsigned int), (unsigned int)0); // cut_pressure
     EEPROM.put(5 * sizeof(unsigned int), (unsigned int)30); // cut_duration
-    EEPROM.put(6 * sizeof(unsigned int), (unsigned int)800); // rise_rate_threshold
-    EEPROM.put(7 * sizeof(unsigned int), (unsigned int)120); // update_interval
+    EEPROM.put(6 * sizeof(unsigned int), (unsigned int)40); // rise_rate_threshold
+    EEPROM.put(7 * sizeof(unsigned int), (unsigned int)60); // update_interval
+    EEPROM.put(8 * sizeof(unsigned int) + 0 * sizeof(long), (unsigned long)0); // max_distance
+    EEPROM.put(9 * sizeof(unsigned int) + 1 * sizeof(long), (long)0); // min_latitude
+    EEPROM.put(10* sizeof(unsigned int) + 2 * sizeof(long), (long)0); // max_latitude
+    EEPROM.put(11* sizeof(unsigned int) + 3 * sizeof(long), (long)0); // min_longitude
+    EEPROM.put(12* sizeof(unsigned int) + 4 * sizeof(long), (long)0); // max_longitude
     EEPROM.put(0 * sizeof(unsigned int), (unsigned int)0);  // unit_id 0=UNSET
     unit_id = 0;
   }
@@ -414,6 +541,13 @@ void setup() {
   // update interval
   EEPROM.get(7 * sizeof(unsigned int), update_interval);
 
+  // update geofencing
+  EEPROM.get( 8 * sizeof(unsigned int) + 0 * sizeof(long), max_distance);
+  EEPROM.get( 9 * sizeof(unsigned int) + 1 * sizeof(long), min_latitude);
+  EEPROM.get(10 * sizeof(unsigned int) + 2 * sizeof(long), max_latitude);
+  EEPROM.get(11 * sizeof(unsigned int) + 3 * sizeof(long), min_longitude);
+  EEPROM.get(12 * sizeof(unsigned int) + 4 * sizeof(long), max_longitude);
+
 #ifdef BMP180
   while (!bmp.begin()) {
     Serial.println("Could not find a valid BMP085/180 sensor, check wiring");
@@ -427,14 +561,37 @@ void setup() {
   }
 #endif
 
+#ifdef MPR
+  /* The micropressure sensor uses default settings with the address 0x18 using Wire.
+
+     The mircropressure sensor has a fixed I2C address, if another address is used it
+     can be defined here. If you need to use two micropressure sensors, and your
+     microcontroller has multiple I2C buses, these parameters can be changed here.
+
+     E.g. mpr.begin(ADDRESS, Wire1)
+
+     Will return true on success or false on failure to communicate. */
+  Wire.begin();
+  while(!mpr.begin())
+  {
+    Serial.println("Cannot connect to MicroPressure sensor.");
+    for (int i = 0; i < 4; i++) {
+      digitalWrite(LED_BUILTIN, HIGH);  // blink LED 4 times to indicate sensor problem
+      delay(50);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(50);
+    }
+    delay(400);  // give an extra time between the 4 pulses
+  }
+#endif
 
   if (DEBUG) {
-    serialCommands.getSerial().println(F("Starting"));
+    serialCommands.getSerial().println(F("*** Connected to pressure sensor"));
   }
 
   if (DEBUG_PLOT) {  // print out a bunch of zeros for the sake of simple arduino serial plotter
     for (int i = 0; i < 500; i++) {
-      Serial.println("0");
+      Serial.println("0 0");
     }
   }
 
@@ -457,14 +614,35 @@ void setup() {
     } **/
 
   // pre-fill sample array with pressures
+  base_pressure = 0;
   for (int i = 0; i < N; i++) {
-    sample[i] = (long)bmp.readPressure();  // read pressure in Pa, mbar * 100
+    digitalWrite(LED_BUILTIN, HIGH);
+#ifdef BMP180
+    sample[i] = bmp.readPressure();  // read pressure in Pa 
+#endif
+#ifdef MPR
+    sample[i] = mpr.readPressure(PA);
+    //for (int s=0; s<6; s++) {
+    //  sample[i] += mpr.readPressure(PA);  // read pressure in Pa
+    //}
+    //sample[i] = sample[i]/7;
+#endif
+#ifdef FAKE_PRESSURE
+    sample[i] = 97400;  // fake pressure
+#endif
+
     base_pressure += sample[i];  // base_pressure is only used for arduino simple serial plotter
+
+    delay((T-8)/2);  // sample at about the same rate as normal
+    digitalWrite(LED_BUILTIN, LOW);
+    delay((T-8)/2);
   }
   base_pressure /= N;  // base_pressure is average of N readings
 
   if (DEBUG) {
-    Serial.println("***");
+    Serial.print(F("*** base_pressure="));
+    Serial.println(base_pressure);
+    Serial.println(F("*** End setup()"));
   }
 
   n = 0;  // oldest sample, first to be replaced in buffer; n is the index into the circular buffer of pressures
@@ -475,25 +653,37 @@ void setup() {
   LED_period = 1000;
   LED_duration = 50;
 
+  // initialize launch location
+  launch_lat = 0;
+  launch_lon = 0;
+  launch_alt = 0;
+
   // here we test the haversine function with known values to generate a known result
-  if (0) {
+  /* if (0) {
     const double lat1 = 51500700;
     const double lon1 = 124600;
     const double lat2 = 40689200;
     const double lon2 = 74044500;
     Serial.print(F("haversine test (5574.84): "));
     Serial.println(haversine(lat1, lon1, lat2, lon2));
-  }
+  } */
 
 }
 
 void loop() {
-  long rise_rate;
   long current_pressure;
   long pressure_sample;
+  long rise_rate;
+  static long rise_rate_running_sum;
   static unsigned long cut_time;
-  static unsigned long last_update;
+  static unsigned long last_update_millis;
+  static unsigned long last_sample_millis;
+  static unsigned long loop_timer;
+  static unsigned long loop_total;
+  static unsigned int loop_count;
 
+  loop_timer=millis();
+  
   // read command from satellite radio
   //    if cut command received, active_state = CUT_INIT
   //    if PING command received, return PONG response
@@ -505,13 +695,12 @@ void loop() {
     if (nmea.process(gpsSerial.read())) {
       // do something if a new NMEA sentence has arrived
       // serialCommands.getSerial().println(nmea.getSecond());
-      if (nmea.isValid()) {
-        // turn on GPS valid LED
-      } else {
-        // turn off GPS valid LED
-      }
     }
   }
+
+  // sample pressure periodically by detecting rollover of period
+  unsigned long this_sample_millis = millis() % T;
+  if (this_sample_millis < last_sample_millis) {
 
   // read new pressure into circular buffer position n
   // increment n
@@ -522,62 +711,79 @@ void loop() {
   // that's the rise/fall rate. rise is positive, fall negative
 
 #ifdef BMP180
-  pressure_sample = (long)bmp.readPressure();  // pressure in Pa (~97000 Pa in Norman, OK)
-#else
-  pressure_sample = (long)97400;
+    pressure_sample = bmp.readPressure();  // pressure in Pa (~97000 Pa in Norman, OK)
 #endif
-  sample[n] = pressure_sample;
+#ifdef MPR
+    pressure_sample = mpr.readPressure(PA);
+#endif
+#ifdef FAKE_PRESSURE
+    pressure_sample = 97400;
+#endif
+    sample[n] = pressure_sample;
 
-  //Serial.print((sample[n]-base_pressure)*25);  // scaled and shifted for serial plotter
-  //Serial.println(sample[n]);
+    // increment the circular buffer index
+    n++;
+    if (n >= N) {
+      n = 0;
+    }
 
-  // increment the circular buffer index
-  n++;
-  if (n >= N) {
-    n = 0;
-  }
+    // apply linear regression filter to calculate rise rate
+    rise_rate = 0;
+    current_pressure = 0;
+    for (int i = 0; i < N; i++) {
+      rise_rate += (filter[i] * sample[ (n + i) % N ]);
+      current_pressure += sample[i];
+      if (0) {  // debug code
+        Serial.print("filter[");
+        Serial.print(i);
+        Serial.print("]: (");
+        Serial.print(filter[i]);
+        Serial.print(") * ");
+        Serial.print("sample[");
+        Serial.print( (n + i) % N );
+        Serial.print("]: (");
+        Serial.print(sample[(n + i) % N]);
+        Serial.print(") = ");
+        Serial.println(filter[i] * sample[ (n + i) % N]);
+      }
+    }
+    if (0) {  // more debug code
+      Serial.print(F("rise_rate: "));
+      Serial.println(rise_rate);
+    }
 
-  // apply linear regression filter to calculate rise rate
-  rise_rate = 0;
-  current_pressure = 0;
-  for (int i = 0; i < N; i++) {
-    rise_rate += (filter[i] * sample[ (n + i) % N ]);
-    current_pressure += sample[i];
-    if (0) {  // debug code
-      Serial.print("filter[");
-      Serial.print(i);
-      Serial.print("]: (");
-      Serial.print(filter[i]);
-      Serial.print(") * ");
-      Serial.print("sample[");
-      Serial.print( (n + i) % N );
-      Serial.print("]: (");
-      Serial.print(sample[(n + i) % N]);
-      Serial.print(") = ");
-      Serial.println(filter[i] * sample[ (n + i) % N]);
+    //rise_rate_running_sum += rise_rate;
+  
+    current_pressure /= N;  // moving average of pressure
+    rise_rate = rise_rate>>10 ;  // rise_rate scaled to make up for integer filter coefficients
+
+    if (DEBUG_PLOT) {
+      Serial.print(current_pressure-base_pressure);
+      Serial.print(F(" "));
+      Serial.print(rise_rate);
+      Serial.println(F(""));
+    }
+
+    if (DEBUG_SENSOR) {
+      Serial.print(F("AvePres: "));
+      Serial.print(current_pressure);
+      Serial.print(F("\t"));
+      Serial.print(F("PressSamp: "));
+      Serial.print(pressure_sample);
+      Serial.print(F("\t"));
+      Serial.print(F("RiseRate: "));
+      Serial.println(rise_rate);
+      //Serial.print(F("\tSum: "));
+      //Serial.println(rise_rate_running_sum);
     }
   }
+  
+  // update pressure sample time so we can detect overflow on next loop iteration
+  last_sample_millis = this_sample_millis;
 
-  current_pressure /= N;  // moving average of pressure
-  rise_rate /= 1000;  // rise_rate scaled to make up for integer filter coefficients
-
-  if (DEBUG_SENSOR) {
-    Serial.print(F("Time: "));
-    Serial.print(millis());
-    Serial.print(F("\t"));
-    Serial.print(F("AvePres: "));
-    Serial.print(current_pressure);
-    Serial.print(F("\t"));
-    Serial.print(F("PressSamp: "));
-    Serial.print(pressure_sample);
-    Serial.print(F("\t"));
-    Serial.print(F("RiseRate: "));
-    Serial.println(rise_rate);
-  }
-
+  unsigned long this_update_millis = (millis() % (1000 * update_interval));
   // send status message periodically via HW serial / satellite
-  if (((unsigned long)millis() % ((unsigned long)1000 * update_interval)) < (unsigned long)last_update) {
-
+  if ( this_update_millis < last_update_millis) {
     serialCommands.getSerial().print(millis() / 1000);
     serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().print(active_state);
@@ -607,11 +813,12 @@ void loop() {
     } else {
       serialCommands.getSerial().println(F("nan"));  // no GPS lock, so no accurate distance available
     }
+
   }
-
+  
   // update update time so we can detect overflow on next loop iteration
-  last_update = millis() % ((unsigned long)1000 * update_interval);
-
+  last_update_millis = this_update_millis;
+  
   // LED update
   digitalWrite(LED_BUILTIN, (millis() % LED_period) < LED_duration);
 
@@ -620,16 +827,20 @@ void loop() {
 
   switch (active_state) {
     case PRELAUNCH:  // short flash, 1Hz
-      if (rise_rate > (long)rise_rate_threshold) {
-        launch_time = (millis() - (unsigned long)FILTER_DELAY);
+      if (rise_rate > rise_rate_threshold) {
+        launch_time = (millis() - FILTER_DELAY/2);
         LED_period = 500;  // long slow blink
         LED_duration = 450;
         active_state = LETDOWN_INIT;
         if (DEBUG) {
           Serial.print(F("LAUNCH ESTIMATE: "));
-          Serial.println(launch_time);
+          Serial.println(launch_time/1000);
           Serial.print(F("LAUNCH DETECT: "));
-          Serial.println(millis());
+          Serial.println(millis()/1000);
+          Serial.print(F("LAUNCH LATITUDE: "));
+          Serial.println(launch_lat);
+          Serial.print(F("LAUNCH LONGITUDE: "));
+          Serial.println(launch_lon);
         }
         // turn off GPS valid LED, because at this point it's too late to get a good launch coordinate.
         //   ... and the device is flying away before the GPS was locked.  OOPS
@@ -654,7 +865,7 @@ void loop() {
         active_state = LETDOWN_ACTIVE;
         if (DEBUG) {
           Serial.print(F("LETDOWN ON: "));
-          Serial.println(millis());
+          Serial.println(millis()/1000);
         }
       }
       break;
@@ -667,7 +878,7 @@ void loop() {
         active_state = FLIGHT;
         if (DEBUG) {
           Serial.print(F("LETDOWN STOPPED: "));
-          Serial.println(millis());
+          Serial.println(millis()/1000);
         }
       }
       break;
@@ -679,17 +890,36 @@ void loop() {
         break;
       }
       // check pressure ceiling; set cut_pressure to 0 to disable pressure initiated cut
-      if ((cut_pressure > 0) && (current_pressure < (long)cut_pressure * 100)) {
+      // if ((cut_pressure > 0) && (current_pressure < (long)cut_pressure * 100)) {
+      if ((cut_pressure > 0) && (current_pressure < (long)cut_pressure*100)) {
         active_state = CUT_INIT;
         break;
       }
       // check geofence here
       if (nmea.isValid()) {
         // compute distance and compare to max distance downrange
+        if ( max_distance>0 && (haversine(launch_lat, launch_lon, nmea.getLatitude(), nmea.getLongitude()) > max_distance)) {
+          active_state = CUT_INIT;
+          break;
+        }
+        if ( max_latitude!=0 && (nmea.getLatitude() > max_latitude)) {
+          active_state = CUT_INIT;
+          break; 
+        }
+        if ( min_latitude!=0 && (nmea.getLatitude() < min_latitude)) {
+          active_state = CUT_INIT;
+          break; 
+        }
+        if ( max_longitude!=0 && (nmea.getLongitude() > max_longitude)) {
+          active_state = CUT_INIT;
+          break; 
+        }
+        if ( max_longitude!=0 && (nmea.getLongitude() < min_longitude)) {
+          active_state = CUT_INIT;
+          break; 
+        }
+        
         // compare lat/lon to lat/lon min and max
-        // blink GPS valid light
-      } else {
-        // turn off GPS valid light
       }
       break;
 
@@ -702,7 +932,7 @@ void loop() {
       active_state = CUT_ACTIVE;
       if (DEBUG) {
         Serial.print(F("CUTDOWN ON: "));
-        Serial.println(millis() - (unsigned long)launch_time);
+        Serial.println(millis()/1000);
       }
       break;
 
@@ -714,7 +944,7 @@ void loop() {
         active_state = POST_FLIGHT;
         if (DEBUG) {
           Serial.print(F("CUTDOWN OFF: "));
-          Serial.println(millis() - (unsigned long)launch_time);
+          Serial.println(millis()/1000);
         }
       }
       break;
@@ -728,9 +958,14 @@ void loop() {
       break;
   }
 
-  if (DEBUG_SENSOR) {
-    Serial.println(F(""));
-  }
+  //if (DEBUG_SENSOR) {
+  //  Serial.println(F(""));
+  //}
 
-  delay(T);
+  delay(1);
+  //unsigned long foo = millis()-loop_timer;
+  //if (foo > 3) {
+  //  Serial.println(millis()-loop_timer);
+  //}
+  
 }
