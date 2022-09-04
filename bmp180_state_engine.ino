@@ -35,11 +35,28 @@
 // Connect GND to Ground
 // Connect SCL to i2c clock - on '168/'328 Arduino Uno/Duemilanove/etc thats Analog 5
 // Connect SDA to i2c data - on '168/'328 Arduino Uno/Duemilanove/etc thats Analog 4
+Adafruit_BMP085 bmp;
 #endif
 
 #ifdef MPR
 #include <Wire.h>
-#include <SparkFun_MicroPressure.h>
+//#include <SparkFun_MicroPressure.h>
+/*
+ * Initialize Constructor
+ * Optional parameters:
+ *  - EOC_PIN: End Of Conversion (defualt: -1)
+ *  - RST_PIN: Reset (defualt: -1)
+ *  - MIN_PSI: Minimum Pressure (default: 0 PSI)
+ *  - MAX_PSI: Maximum Pressure (default: 25 PSI)
+ */
+//SparkFun_MicroPressure mpr(EOC_PIN, RST_PIN, MIN_PSI, MAX_PSI);
+//SparkFun_MicroPressure mpr; // Use default values with reset and EOC pins unused
+
+#include "Doug_Adafruit_MPRLS.h"
+// You dont *need* a reset and EOC pin for most uses, so we set to -1 and don't connect
+#define RESET_PIN 8  // set to any GPIO pin # to hard-reset on begin()
+#define EOC_PIN -1   // set to any GPIO pin to read end-of-conversion by pin
+Adafruit_MPRLS mpr = Adafruit_MPRLS(RESET_PIN, EOC_PIN);
 #endif 
 
 #include <StaticSerialCommands.h>
@@ -57,7 +74,7 @@
 #define DEBUG_SENSOR (0)
 
 // debug plot the rise_rate
-#define DEBUG_PLOT (0)
+//#define DEBUG_PLOT
 
 // print out average loop time in ms, current loop time
 #define DEBUG_SAMPLE_INTERVAL (0)
@@ -77,11 +94,12 @@
 // length of filter (N must be odd)
 #define N (33)
 
-// make this interval between samples; filter total time is N*T
+// make this interval between pressure samples; filter total time is N*T
 #define T (333)
 
-// filter delay in milliseconds
-#define FILTER_DELAY (N*T)
+// filter delay in milliseconds; we trigger before filter gets filled up with rising values
+//  so estimate at half of the filter total time
+#define FILTER_DELAY (N*T/2)
 
 // sink rate to trigger event - not presently used; could be used to detect balloon pop.  less than -100 could be freefall
 #define SINK_RATE_THRESHOLD (-100)
@@ -124,23 +142,6 @@ static long max_longitude;
 NeoSWSerial gpsSerial (10, 9);
 // SoftwareSerial gpsSerial (10, 9);
 
-#ifdef BMP180
-Adafruit_BMP085 bmp;
-#endif
-
-#ifdef MPR
-/*
- * Initialize Constructor
- * Optional parameters:
- *  - EOC_PIN: End Of Conversion (defualt: -1)
- *  - RST_PIN: Reset (defualt: -1)
- *  - MIN_PSI: Minimum Pressure (default: 0 PSI)
- *  - MAX_PSI: Maximum Pressure (default: 25 PSI)
- */
-//SparkFun_MicroPressure mpr(EOC_PIN, RST_PIN, MIN_PSI, MAX_PSI);
-SparkFun_MicroPressure mpr; // Use default values with reset and EOC pins unused
-#endif
-
 char nmeaBuffer[85];  // a buffer big enough to hold largest expected NMEA sentence
 MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
 
@@ -157,8 +158,8 @@ const int filter[N] = {53,50,46,43,40,36,33,30,26,23,20,16,13,10,6,3,
 #endif
 
 // circular buffer of N samples
-long sample[N];
-long base_pressure;
+unsigned long sample[N];
+unsigned long base_pressure;
 
 // index of circular buffer, 0 to N-1
 int n = 0;
@@ -180,8 +181,8 @@ state active_state = PRELAUNCH;  // initial state
 
 int LED_period = 2000;  // interval to blink LED
 int LED_duration = 50;  // duration of LED blink
-const int GPS_LED_period = 500;  // interval to blink GPS locked LED
-const int GPS_LED_duration = 250;  // duration to blink GPS locked LED
+const int GPS_LED_period = 1000;  // interval to blink GPS locked LED
+const int GPS_LED_duration = 50;  // duration to blink GPS locked LED
 
 unsigned long launch_time = 0;  // so we can time letdown and flight time
 
@@ -447,6 +448,8 @@ void setup() {
   digitalWrite(MOTOR, LOW);  // motor off
   pinMode(CUTTER, OUTPUT);  // cutter control port
   digitalWrite(CUTTER, LOW);  // cutter off
+  //pinMode(RESET_PIN, OUTPUT); // MPR reset pin
+  //digitalWrite(RESET_PIN, HIGH);  //  ... and reset it
 
   // set up GPS LED
   pinMode(LED_GPS, OUTPUT);
@@ -470,7 +473,7 @@ void setup() {
   gpsSerial.begin(9600);
 
   if (DEBUG) {
-    Serial.println(F("*** Start setup()"));
+    Serial.println(F("\n*** Start setup()"));
   }
   
   // calculate filter coefficients
@@ -510,7 +513,7 @@ void setup() {
     EEPROM.put(4 * sizeof(unsigned int), (unsigned int)0); // cut_pressure
     EEPROM.put(5 * sizeof(unsigned int), (unsigned int)30); // cut_duration
     EEPROM.put(6 * sizeof(unsigned int), (unsigned int)40); // rise_rate_threshold
-    EEPROM.put(7 * sizeof(unsigned int), (unsigned int)60); // update_interval
+    EEPROM.put(7 * sizeof(unsigned int), (unsigned int)1); // update_interval
     EEPROM.put(8 * sizeof(unsigned int) + 0 * sizeof(long), (unsigned long)0); // max_distance
     EEPROM.put(9 * sizeof(unsigned int) + 1 * sizeof(long), (long)0); // min_latitude
     EEPROM.put(10* sizeof(unsigned int) + 2 * sizeof(long), (long)0); // max_latitude
@@ -572,9 +575,12 @@ void setup() {
 
      Will return true on success or false on failure to communicate. */
   Wire.begin();
+  //#if defined(WIRE_HAS_TIMEOUT)
+  //Wire.setWireTimeout(3000 /* us */, true /* reset_on_timeout */);
+  //#endif
   while(!mpr.begin())
   {
-    Serial.println("Cannot connect to MicroPressure sensor.");
+    Serial.println("Cannot connect to MPR sensor.");
     for (int i = 0; i < 4; i++) {
       digitalWrite(LED_BUILTIN, HIGH);  // blink LED 4 times to indicate sensor problem
       delay(50);
@@ -585,15 +591,15 @@ void setup() {
   }
 #endif
 
-  if (DEBUG) {
-    serialCommands.getSerial().println(F("*** Connected to pressure sensor"));
-  }
+  #ifdef DEBUG
+  serialCommands.getSerial().println(F("*** Connected to pressure sensor"));
+  #endif
 
-  if (DEBUG_PLOT) {  // print out a bunch of zeros for the sake of simple arduino serial plotter
-    for (int i = 0; i < 500; i++) {
-      Serial.println("0 0");
-    }
+  #ifdef DEBUG_PLOT   // print out a bunch of zeros for the sake of simple arduino serial plotter
+  for (int i = 0; i < 500; i++) {
+    Serial.println("0 0");
   }
+  #endif
 
   /** if (0) {  // wierd stuff
     base_pressure = 0;  // calculate base pressure for plotting later, average of several readings
@@ -614,6 +620,9 @@ void setup() {
     } **/
 
   // pre-fill sample array with pressures
+  #ifdef DEBUG
+  Serial.print(F("*** Initializing digital filter"));
+  #endif
   base_pressure = 0;
   for (int i = 0; i < N; i++) {
     digitalWrite(LED_BUILTIN, HIGH);
@@ -621,7 +630,7 @@ void setup() {
     sample[i] = bmp.readPressure();  // read pressure in Pa 
 #endif
 #ifdef MPR
-    sample[i] = mpr.readPressure(PA);
+    sample[i] = mpr.readIntPressure();
     //for (int s=0; s<6; s++) {
     //  sample[i] += mpr.readPressure(PA);  // read pressure in Pa
     //}
@@ -633,10 +642,17 @@ void setup() {
 
     base_pressure += sample[i];  // base_pressure is only used for arduino simple serial plotter
 
-    delay((T-8)/2);  // sample at about the same rate as normal
+    delay((T-8)/4);  // sample at about 2x the same rate as normal
     digitalWrite(LED_BUILTIN, LOW);
-    delay((T-8)/2);
+    delay((T-8)/4);
+    #ifdef DEBUG
+    Serial.print(F("."));
+    #endif
   }
+
+  #ifdef DEBUG
+  Serial.println();
+  #endif
   base_pressure /= N;  // base_pressure is average of N readings
 
   if (DEBUG) {
@@ -671,8 +687,8 @@ void setup() {
 }
 
 void loop() {
-  long current_pressure;
-  long pressure_sample;
+  unsigned long current_pressure;
+  unsigned long pressure_sample;
   long rise_rate;
   static long rise_rate_running_sum;
   static unsigned long cut_time;
@@ -714,7 +730,7 @@ void loop() {
     pressure_sample = bmp.readPressure();  // pressure in Pa (~97000 Pa in Norman, OK)
 #endif
 #ifdef MPR
-    pressure_sample = mpr.readPressure(PA);
+    pressure_sample = mpr.readIntPressure();
 #endif
 #ifdef FAKE_PRESSURE
     pressure_sample = 97400;
@@ -757,12 +773,12 @@ void loop() {
     current_pressure /= N;  // moving average of pressure
     rise_rate = rise_rate>>10 ;  // rise_rate scaled to make up for integer filter coefficients
 
-    if (DEBUG_PLOT) {
+    #ifdef DEBUG_PLOT
       Serial.print(current_pressure-base_pressure);
       Serial.print(F(" "));
       Serial.print(rise_rate);
       Serial.println(F(""));
-    }
+    #endif
 
     if (DEBUG_SENSOR) {
       Serial.print(F("AvePres: "));
@@ -802,6 +818,8 @@ void loop() {
     serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().print(current_pressure);
     serialCommands.getSerial().print(F(","));
+    serialCommands.getSerial().print(pressure_sample);
+    serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().print(rise_rate);
     serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().print(nmea.getLatitude());
@@ -828,18 +846,22 @@ void loop() {
   switch (active_state) {
     case PRELAUNCH:  // short flash, 1Hz
       if (rise_rate > rise_rate_threshold) {
-        launch_time = (millis() - FILTER_DELAY/2);
+        launch_time = (millis() - FILTER_DELAY);
         LED_period = 500;  // long slow blink
         LED_duration = 450;
         active_state = LETDOWN_INIT;
         if (DEBUG) {
-          Serial.print(F("LAUNCH ESTIMATE: "));
-          Serial.println(launch_time/1000);
-          Serial.print(F("LAUNCH DETECT: "));
+          Serial.print(F("LAUNCH DETECT AT: "));
           Serial.println(millis()/1000);
-          Serial.print(F("LAUNCH LATITUDE: "));
+          Serial.print(F("TIME ESTIMATE: "));
+          Serial.println(launch_time/1000);
+          Serial.print(F("PRESS: "));
+          Serial.println(current_pressure);
+          Serial.print(F("RISE RATE: "));
+          Serial.println(rise_rate);
+          Serial.print(F("LATITUDE: "));
           Serial.println(launch_lat);
-          Serial.print(F("LAUNCH LONGITUDE: "));
+          Serial.print(F("LONGITUDE: "));
           Serial.println(launch_lon);
         }
         // turn off GPS valid LED, because at this point it's too late to get a good launch coordinate.
