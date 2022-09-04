@@ -100,9 +100,8 @@ boolean Adafruit_MPRLS::begin(uint8_t i2c_addr, TwoWire *twoWire) {
 
   if (_reset != -1) {
     pinMode(_reset, OUTPUT);
-    //digitalWrite(_reset, HIGH);
     digitalWrite(_reset, LOW);
-    delay(10);
+    delay(25);
     digitalWrite(_reset, HIGH);
   }
   if (_eoc != -1) {
@@ -150,8 +149,13 @@ uint32_t Adafruit_MPRLS::readIntPressure(void) {
   const uint32_t _Pa_min = 0L;
   
   uint32_t raw_Pa = readData();
+  //Serial.println(raw_Pa);
   if (raw_Pa == 0xFFFFFFFF || _OUTPUT_min == _OUTPUT_max) {
-    return NAN;
+    //return NAN; // results in pressure of 85974??  NAN is for float
+    return 0L;  // error or timeout reading sensor, return 0
+  }
+  if (raw_Pa == 0) {
+    return 0L;  // sensor missing
   }
 
 //  float Pa = (float)(raw_Pa - _OUTPUT_min)*(float)(_Pa_max - _Pa_min);
@@ -166,7 +170,9 @@ uint32_t Adafruit_MPRLS::readIntPressure(void) {
   uint32_t Pa = ((raw_Pa - _OUTPUT_min)>>6)*((_Pa_max - _Pa_min)>>4);
   Pa /= ((_OUTPUT_max - _OUTPUT_min)>>10);
   Pa += _Pa_min;
-  return ((uint32_t)Pa);
+  //return (uint32_t)raw_Pa;
+  //Serial.println(Pa);
+  return (uint32_t)Pa;
 }
 
 /**************************************************************************/
