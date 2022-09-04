@@ -445,7 +445,7 @@ double haversine(double lat1, double lon1, double lat2, double lon2) {
 
 
 void setup() {
-  
+
   // configure control ports and make sure they're off
   pinMode(MOTOR, OUTPUT);  // motor control port
   digitalWrite(MOTOR, LOW);  // motor off
@@ -457,21 +457,17 @@ void setup() {
   // set up output indicator LED
   pinMode(LED_BUILTIN, OUTPUT);
 
-  // start up blip blip on boot
-  digitalWrite(LED_BUILTIN, LOW);
-  digitalWrite(LED_GPS, HIGH);
-  delay(150);
+  // avoid double setup
+  delay(1000);
+  
+  // blink all led on on boot for 1 sec
   digitalWrite(LED_BUILTIN, HIGH);
-  digitalWrite(LED_GPS, LOW);
-  delay(150);
-  digitalWrite(LED_BUILTIN, LOW);
   digitalWrite(LED_GPS, HIGH);
-  delay(150);
-  digitalWrite(LED_BUILTIN, HIGH);
-  digitalWrite(LED_GPS, LOW);
-  delay(150);
+  delay(1000);
   digitalWrite(LED_BUILTIN, LOW);
-
+  digitalWrite(LED_GPS, LOW);
+  delay(1000);
+  
   // set serial port baud rates
   Serial.begin(9600);  // hardware serial is connected to sat radio and/or programming FTDI cable
   gpsSerial.begin(9600);
@@ -587,10 +583,10 @@ void setup() {
     for (int i = 0; i < 4; i++) {
       digitalWrite(LED_BUILTIN, HIGH);  // blink LED 4 times to indicate sensor problem
       digitalWrite(RESET_PIN, LOW);
-      delay(50);
+      delay(250);
       digitalWrite(LED_BUILTIN, LOW);
       digitalWrite(RESET_PIN, HIGH);
-      delay(50);
+      delay(250);
     }
     delay(400);  // give an extra time between the 4 pulses
   }
