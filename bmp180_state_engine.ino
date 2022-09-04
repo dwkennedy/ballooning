@@ -2,10 +2,7 @@
   detect balloon launch by thresholding rise rate
   Doug Kennedy
   for BMP180 or similar sensor using adafruit BMP805 library
-  Output 13 (LED)
-  ON - rise detected, positive slope exceeds threshold
-  FLASH - sink detected, negative slope exceeds threshold
-  OFF - between rise/sink thresholds
+  ... and a bunch of other stuff
 */
 
 /*
@@ -15,10 +12,16 @@
      N 33                       5 bits
 */
 
-//  https://github.com/SlashDevin/NeoSWSerial
-//  https://github.com/naszly/Arduino-StaticSerialCommands
-//  https://github.com/stevemarple/MicroNMEA
-//  http://www.bamfordresearch.com/files/package_jb23_insystemmcu_index.json
+//  improved software serial port
+//   https://github.com/SlashDevin/NeoSWSerial
+//  command interpreter
+//   https://github.com/naszly/Arduino-StaticSerialCommands
+//  NMEA GPS decoder
+//   https://github.com/stevemarple/MicroNMEA
+//  Board manager URL for programming bare ATMEGA328P
+//   http://www.bamfordresearch.com/files/package_jb23_insystemmcu_index.json
+//  Adafruit library for Honeywell MPR pressure sensor that I modified
+//   https://github.com/adafruit/Adafruit_MPRLS
 
 // if using BMP180 pressure sensor
 //#define BMP180
@@ -53,7 +56,6 @@ Adafruit_BMP085 bmp;
 //SparkFun_MicroPressure mpr; // Use default values with reset and EOC pins unused
 
 #include "Doug_Adafruit_MPRLS.h"
-// You dont *need* a reset and EOC pin for most uses, so we set to -1 and don't connect
 #define RESET_PIN 8  // set to any GPIO pin # to hard-reset on begin()
 #define EOC_PIN -1   // set to any GPIO pin to read end-of-conversion by pin
 Adafruit_MPRLS mpr = Adafruit_MPRLS(RESET_PIN, EOC_PIN);
@@ -67,20 +69,20 @@ Adafruit_MPRLS mpr = Adafruit_MPRLS(RESET_PIN, EOC_PIN);
 #include <EEPROM.h>
 #include <math.h>
 
-// debug state engine
-#define DEBUG (1)
+// debug setup() and state engine
+#define DEBUG
 
 // debug sensor and filter
-#define DEBUG_SENSOR (0)
+#define DEBUG_SENSOR
 
 // debug plot the rise_rate
 //#define DEBUG_PLOT
 
 // print out average loop time in ms, current loop time
-#define DEBUG_SAMPLE_INTERVAL (0)
+#define DEBUG_SAMPLE_INTERVAL
 
 // uncomment to calculate filter coefficents and dump to serial
-//#define DEBUG_FILTER (1)
+//#define DEBUG_FILTER
 
 // Motor port
 #define MOTOR (2)
@@ -215,7 +217,7 @@ Command subCommands [] {
   COMMAND(cmd_set_cut_pressure, "cut_pressure", ArgType::Int, nullptr, "pressure to terminate flight, mbar"),
   COMMAND(cmd_set_cut_duration, "cut_duration", ArgType::Int, nullptr, "how long to activate cutter, secs"),
   COMMAND(cmd_set_rise_rate_threshold, "rise_rate_threshold", ArgType::Int, nullptr, "let-down trigger sensitivity (~500-1000)"),
-  COMMAND(cmd_set_update_interval, "update_interval", ArgType::Int, nullptr, "how often to send beacon, secs"),
+  COMMAND(cmd_set_update_interval, "update_interval", ArgType::Int, nullptr, "how often to send beacon 0=disable, secs"),
   COMMAND(cmd_set_max_distance, "max_distance", ArgType::Int, nullptr, "distance from launch to terminate flight, meters"),
   COMMAND(cmd_set_min_latitude, "min_latitude", ArgType::Int, nullptr, "minimum latitude geofence, degrees X 10^6 N"),
   COMMAND(cmd_set_max_latitude, "max_latitude", ArgType::Int, nullptr, "maximum latitude geofence, degrees X 10^6 N"),
@@ -448,23 +450,24 @@ void setup() {
   digitalWrite(MOTOR, LOW);  // motor off
   pinMode(CUTTER, OUTPUT);  // cutter control port
   digitalWrite(CUTTER, LOW);  // cutter off
-  //pinMode(RESET_PIN, OUTPUT); // MPR reset pin
-  //digitalWrite(RESET_PIN, HIGH);  //  ... and reset it
 
   // set up GPS LED
   pinMode(LED_GPS, OUTPUT);
   // set up output indicator LED
   pinMode(LED_BUILTIN, OUTPUT);
+
+  // start up blip blip on boot
+  digitalWrite(LED_BUILTIN, LOW);
   digitalWrite(LED_GPS, HIGH);
   delay(150);
-  digitalWrite(LED_BUILTIN, HIGH);  // blip blip on boot
-  digitalWrite(LED_GPS, LOW);  // blip blip on boot
+  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_GPS, LOW);
   delay(150);
   digitalWrite(LED_BUILTIN, LOW);
   digitalWrite(LED_GPS, HIGH);
   delay(150);
-  digitalWrite(LED_BUILTIN, HIGH);  // blip #2
-  digitalWrite(LED_GPS, LOW);  // blip blip on boot
+  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_GPS, LOW);
   delay(150);
   digitalWrite(LED_BUILTIN, LOW);
 
@@ -472,13 +475,13 @@ void setup() {
   Serial.begin(9600);  // hardware serial is connected to sat radio and/or programming FTDI cable
   gpsSerial.begin(9600);
 
-  if (DEBUG) {
-    Serial.println(F("\n*** Start setup()"));
-  }
+  #ifdef DEBUG
+    Serial.println(F("\r\n*** Start setup()"));
+  #endif
   
   // calculate filter coefficients
   //  (could be done statically if N is fixed)
-#ifdef DEBUG_FILTER
+  #ifdef DEBUG_FILTER
     Serial.print(F("filter[] = {"));
 
     for (int i = 0; i < N; i++) {
@@ -497,10 +500,9 @@ void setup() {
 
     Serial.print(filter[N-1]);
     Serial.println(F("};"));
-#endif
+  #endif
 
-  // read parameters from EEPROM
-  // parameters to adjust for flight
+  // read parameters from EEPROM-- things we can adjust for flight
 
   // unit address/ serial number
   EEPROM.get(0 * sizeof(unsigned int), unit_id);
@@ -626,19 +628,15 @@ void setup() {
   base_pressure = 0;
   for (int i = 0; i < N; i++) {
     digitalWrite(LED_BUILTIN, HIGH);
-#ifdef BMP180
+  #ifdef BMP180
     sample[i] = bmp.readPressure();  // read pressure in Pa 
-#endif
-#ifdef MPR
+  #endif
+  #ifdef MPR
     sample[i] = mpr.readIntPressure();
-    //for (int s=0; s<6; s++) {
-    //  sample[i] += mpr.readPressure(PA);  // read pressure in Pa
-    //}
-    //sample[i] = sample[i]/7;
-#endif
-#ifdef FAKE_PRESSURE
+  #endif
+  #ifdef FAKE_PRESSURE
     sample[i] = 97400;  // fake pressure
-#endif
+  #endif
 
     base_pressure += sample[i];  // base_pressure is only used for arduino simple serial plotter
 
@@ -653,13 +651,13 @@ void setup() {
   #ifdef DEBUG
   Serial.println();
   #endif
+  
   base_pressure /= N;  // base_pressure is average of N readings
-
-  if (DEBUG) {
+  #ifdef DEBUG
     Serial.print(F("*** base_pressure="));
     Serial.println(base_pressure);
     Serial.println(F("*** End setup()"));
-  }
+  #endif
 
   n = 0;  // oldest sample, first to be replaced in buffer; n is the index into the circular buffer of pressures
 
@@ -694,11 +692,11 @@ void loop() {
   static unsigned long cut_time;
   static unsigned long last_update_millis;
   static unsigned long last_sample_millis;
-  static unsigned long loop_timer;
+  //static unsigned long loop_timer;
   static unsigned long loop_total;
   static unsigned int loop_count;
 
-  loop_timer=millis();
+  //loop_timer=millis();
   
   // read command from satellite radio
   //    if cut command received, active_state = CUT_INIT
@@ -749,7 +747,7 @@ void loop() {
     for (int i = 0; i < N; i++) {
       rise_rate += (filter[i] * sample[ (n + i) % N ]);
       current_pressure += sample[i];
-      if (0) {  // debug code
+      #ifdef DEBUG_FILTER
         Serial.print("filter[");
         Serial.print(i);
         Serial.print("]: (");
@@ -761,12 +759,12 @@ void loop() {
         Serial.print(sample[(n + i) % N]);
         Serial.print(") = ");
         Serial.println(filter[i] * sample[ (n + i) % N]);
-      }
+      #endif
     }
-    if (0) {  // more debug code
+    #ifdef DEBUG_FILTER
       Serial.print(F("rise_rate: "));
       Serial.println(rise_rate);
-    }
+    #endif
 
     //rise_rate_running_sum += rise_rate;
   
@@ -780,7 +778,7 @@ void loop() {
       Serial.println(F(""));
     #endif
 
-    if (DEBUG_SENSOR) {
+    #ifdef DEBUG_SENSOR
       Serial.print(F("AvePres: "));
       Serial.print(current_pressure);
       Serial.print(F("\t"));
@@ -791,7 +789,7 @@ void loop() {
       Serial.println(rise_rate);
       //Serial.print(F("\tSum: "));
       //Serial.println(rise_rate_running_sum);
-    }
+    #endif
   }
   
   // update pressure sample time so we can detect overflow on next loop iteration
@@ -799,7 +797,7 @@ void loop() {
 
   unsigned long this_update_millis = (millis() % (1000 * update_interval));
   // send status message periodically via HW serial / satellite
-  if ( this_update_millis < last_update_millis) {
+  if ( update_interval && (this_update_millis < last_update_millis)) {
     serialCommands.getSerial().print(millis() / 1000);
     serialCommands.getSerial().print(F(","));
     serialCommands.getSerial().print(active_state);
@@ -829,7 +827,7 @@ void loop() {
     if (nmea.isValid()) {
       serialCommands.getSerial().println(haversine(launch_lat, launch_lon, nmea.getLatitude(), nmea.getLongitude()));
     } else {
-      serialCommands.getSerial().println(F("nan"));  // no GPS lock, so no accurate distance available
+      serialCommands.getSerial().println(F("NAN"));  // no GPS lock, so no accurate distance available
     }
 
   }
@@ -850,7 +848,7 @@ void loop() {
         LED_period = 500;  // long slow blink
         LED_duration = 450;
         active_state = LETDOWN_INIT;
-        if (DEBUG) {
+        #ifdef DEBUG
           Serial.print(F("LAUNCH DETECT AT: "));
           Serial.println(millis()/1000);
           Serial.print(F("TIME ESTIMATE: "));
@@ -863,7 +861,7 @@ void loop() {
           Serial.println(launch_lat);
           Serial.print(F("LONGITUDE: "));
           Serial.println(launch_lon);
-        }
+        #endif
         // turn off GPS valid LED, because at this point it's too late to get a good launch coordinate.
         //   ... and the device is flying away before the GPS was locked.  OOPS
       } else {
@@ -885,10 +883,10 @@ void loop() {
         LED_period = 100;
         LED_duration = 50;
         active_state = LETDOWN_ACTIVE;
-        if (DEBUG) {
+        #ifdef DEBUG
           Serial.print(F("LETDOWN ON: "));
           Serial.println(millis()/1000);
-        }
+        #endif
       }
       break;
 
@@ -898,10 +896,10 @@ void loop() {
         LED_period = 2000;
         LED_duration = 50;
         active_state = FLIGHT;
-        if (DEBUG) {
+        #ifdef DEBUG
           Serial.print(F("LETDOWN STOPPED: "));
           Serial.println(millis()/1000);
-        }
+        #endif
       }
       break;
 
@@ -952,10 +950,10 @@ void loop() {
       LED_period = 200;
       LED_duration = 100;
       active_state = CUT_ACTIVE;
-      if (DEBUG) {
+      #ifdef DEBUG
         Serial.print(F("CUTDOWN ON: "));
         Serial.println(millis()/1000);
-      }
+      #endif
       break;
 
     case CUT_ACTIVE:  // short flash, 5 Hz.
@@ -964,10 +962,10 @@ void loop() {
         LED_period = 4000;
         LED_duration = 100;
         active_state = POST_FLIGHT;
-        if (DEBUG) {
+        #ifdef DEBUG
           Serial.print(F("CUTDOWN OFF: "));
           Serial.println(millis()/1000);
-        }
+        #endif
       }
       break;
 
@@ -980,11 +978,8 @@ void loop() {
       break;
   }
 
-  //if (DEBUG_SENSOR) {
-  //  Serial.println(F(""));
-  //}
-
   delay(1);
+
   //unsigned long foo = millis()-loop_timer;
   //if (foo > 3) {
   //  Serial.println(millis()-loop_timer);
