@@ -73,13 +73,13 @@ Adafruit_MPRLS mpr = Adafruit_MPRLS(RESET_PIN, EOC_PIN);
 #define DEBUG
 
 // debug sensor and filter
-#define DEBUG_SENSOR
+// #define DEBUG_SENSOR
 
 // debug plot the rise_rate
 //#define DEBUG_PLOT
 
 // print out average loop time in ms, current loop time
-#define DEBUG_SAMPLE_INTERVAL
+//#define DEBUG_LOOP_INTERVAL
 
 // uncomment to calculate filter coefficents and dump to serial
 //#define DEBUG_FILTER
@@ -164,7 +164,7 @@ unsigned long sample[N];
 unsigned long base_pressure;
 
 // index of circular buffer, 0 to N-1
-int n = 0;
+uint16_t n = 0;
 
 // state engine labels
 enum state
@@ -425,6 +425,7 @@ SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Comman
 double haversine(double lat1, double lon1, double lat2, double lon2) {
   const double earth_radius = 6371009;  // earth radius in meters
   //const double pi180 = 3.1415926535897932384626433832795/180.0/1000000.0;
+  // PI/180/1000000   convert millionths of degrees to radians
   const double pi180 = 0.000000017453292519943295769236907684886127134428718885417254560971;
 
   // convert millionths of degrees to radians
@@ -585,8 +586,10 @@ void setup() {
     Serial.println("Cannot connect to MPR sensor.");
     for (int i = 0; i < 4; i++) {
       digitalWrite(LED_BUILTIN, HIGH);  // blink LED 4 times to indicate sensor problem
+      digitalWrite(RESET_PIN, LOW);
       delay(50);
       digitalWrite(LED_BUILTIN, LOW);
+      digitalWrite(RESET_PIN, HIGH);
       delay(50);
     }
     delay(400);  // give an extra time between the 4 pulses
@@ -631,13 +634,17 @@ void setup() {
   #ifdef BMP180
     sample[i] = bmp.readPressure();  // read pressure in Pa 
   #endif
-  #ifdef MPR
-    sample[i] = mpr.readIntPressure();
-  #endif
   #ifdef FAKE_PRESSURE
     sample[i] = 97400;  // fake pressure
   #endif
 
+  #ifdef MPR
+    while ( (sample[i] = mpr.readIntPressure()) == 0L) {
+      delay(50);
+      digitalWrite(LED_BUILTIN, LOW);  // bad sample, turn off LED and try again
+    }
+  #endif MPR  
+  
     base_pressure += sample[i];  // base_pressure is only used for arduino simple serial plotter
 
     delay((T-8)/4);  // sample at about 2x the same rate as normal
@@ -692,11 +699,13 @@ void loop() {
   static unsigned long cut_time;
   static unsigned long last_update_millis;
   static unsigned long last_sample_millis;
-  //static unsigned long loop_timer;
   static unsigned long loop_total;
   static unsigned int loop_count;
 
-  //loop_timer=millis();
+  #ifdef DEBUG_LOOP_INTERVAL
+  static unsigned long loop_timer;
+  loop_timer=millis();
+  #endif
   
   // read command from satellite radio
   //    if cut command received, active_state = CUT_INIT
@@ -727,19 +736,20 @@ void loop() {
 #ifdef BMP180
     pressure_sample = bmp.readPressure();  // pressure in Pa (~97000 Pa in Norman, OK)
 #endif
-#ifdef MPR
-    pressure_sample = mpr.readIntPressure();
-#endif
 #ifdef FAKE_PRESSURE
     pressure_sample = 97400;
 #endif
+#ifdef MPR
+    if ( (pressure_sample = mpr.readIntPressure()) == 0L) {
+      pressure_sample = sample[((n-1) % N)];  // sample failed, so replace with similar sample
+    }
+#endif
+
     sample[n] = pressure_sample;
 
     // increment the circular buffer index
     n++;
-    if (n >= N) {
-      n = 0;
-    }
+    n = n % N;
 
     // apply linear regression filter to calculate rise rate
     rise_rate = 0;
@@ -827,7 +837,7 @@ void loop() {
     if (nmea.isValid()) {
       serialCommands.getSerial().println(haversine(launch_lat, launch_lon, nmea.getLatitude(), nmea.getLongitude()));
     } else {
-      serialCommands.getSerial().println(F("NAN"));  // no GPS lock, so no accurate distance available
+      serialCommands.getSerial().println(F("NaN"));  // no GPS lock, so no accurate distance available
     }
 
   }
@@ -980,9 +990,11 @@ void loop() {
 
   delay(1);
 
-  //unsigned long foo = millis()-loop_timer;
-  //if (foo > 3) {
-  //  Serial.println(millis()-loop_timer);
-  //}
+  #ifdef DEBUG_LOOP_INTERVAL
+  unsigned long foo = millis()-loop_timer;
+  if (foo > 3) {
+    Serial.println(millis()-loop_timer);
+  }
+  #endif
   
 }
