@@ -738,6 +738,8 @@ void loop() {
 #ifdef MPR
     if ( (pressure_sample = mpr.readIntPressure()) == 0L) {
       pressure_sample = sample[((n-1) % N)];  // sample failed, so replace with similar sample
+      LED_period = 100;  // make LED complain about bad pressure
+      LED_duration = 50;
     }
 #endif
 
