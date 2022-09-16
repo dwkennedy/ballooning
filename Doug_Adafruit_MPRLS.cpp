@@ -171,7 +171,6 @@ uint32_t Adafruit_MPRLS::readIntPressure(void) {
   Pa /= ((_OUTPUT_max - _OUTPUT_min)>>10);
   Pa += _Pa_min;
   //return (uint32_t)raw_Pa;
-  //Serial.println(Pa);
   return (uint32_t)Pa;
 }
 
