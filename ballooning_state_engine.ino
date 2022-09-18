@@ -6,11 +6,10 @@
 */
 
 /* subset of commands for satellite
- *  ping
- *  set
- *  letdown
- *  cut
- *  update
+ *  PNG{stuff}             return binary string {stuff}
+ *  PRG{struct config}     program EEPROM with config structure
+ *  LET{uint16_t time)     activate letdown for time milliseconds
+ *  CUT{unit_id}           initiate cutting immediately if unit_id matches
  */
 
 //  Board manager URL for programming bare ATMEGA328P
@@ -58,6 +57,7 @@ Adafruit_MPRLS mpr = Adafruit_MPRLS(RESET_PIN, EOC_PIN);
 #include <TinyGPSPlus.h> // NMEA parsing: http://arduiniana.org
 
 #include <EEPROM.h>
+#define EEPROM_BASE_ADDR 40
 #include <math.h>
 #include "ballooning_state_engine.h"
 
@@ -192,273 +192,89 @@ uint32_t current_pressure;
 uint32_t pressure_sample;
 int32_t rise_rate;
 
-/*void cmd_help(SerialCommands& sender, Args& args);
-void cmd_ping(SerialCommands& sender, Args& args);
-void cmd_show(SerialCommands& sender, Args& args);
-void cmd_cut(SerialCommands& sender, Args& args);
-void cmd_letdown(SerialCommands& sender, Args& args);
-void cmd_update(SerialCommands& sender, Args& args);
-void cmd_set(SerialCommands& sender, Args& args);
-void cmd_set_unit_id(SerialCommands& sender, Args& args);
-void cmd_set_letdown_delay(SerialCommands& sender, Args& args);
-void cmd_set_letdown_duration(SerialCommands& sender, Args& args);
-void cmd_set_max_flight_duration(SerialCommands& sender, Args& args);
-void cmd_set_cut_pressure(SerialCommands& sender, Args& args);
-void cmd_set_cut_duration(SerialCommands& sender, Args& args);
-void cmd_set_rise_rate_threshold(SerialCommands& sender, Args& args);
-void cmd_set_update_interval(SerialCommands& sender, Args& args);
-void cmd_set_max_distance(SerialCommands& sender, Args& args);
-void cmd_set_min_latitude(SerialCommands& sender, Args& args);
-void cmd_set_max_latitude(SerialCommands& sender, Args& args);
-void cmd_set_min_longitude(SerialCommands& sender, Args& args);
-void cmd_set_max_longitude(SerialCommands& sender, Args& args);
-
-Command subCommands [] {
-  COMMAND(cmd_set_unit_id, "unit_id", ArgType::Int, nullptr, "unique address"),
-  COMMAND(cmd_set_letdown_delay, "letdown_delay", ArgType::Int, nullptr, "activation after launch, secs"),
-  COMMAND(cmd_set_letdown_duration, "letdown_duration", ArgType::Int, nullptr, "time to lower, secs"),
-  COMMAND(cmd_set_max_flight_duration, "max_flight_duration", ArgType::Int, nullptr, "elapsed time to terminate flight, secs"),
-  COMMAND(cmd_set_cut_pressure, "cut_pressure", ArgType::Int, nullptr, "pressure to terminate flight, mbar"),
-  COMMAND(cmd_set_cut_duration, "cut_duration", ArgType::Int, nullptr, "how long to activate cutter, secs"),
-  COMMAND(cmd_set_rise_rate_threshold, "rise_rate_threshold", ArgType::Int, nullptr, "let-down trigger sensitivity (~500-1000)"),
-  COMMAND(cmd_set_update_interval, "update_interval", ArgType::Int, nullptr, "how often to send beacon 0=disable, secs"),
-  COMMAND(cmd_set_max_distance, "max_distance", ArgType::Int, nullptr, "distance from launch to terminate flight, meters"),
-  COMMAND(cmd_set_min_latitude, "min_latitude", ArgType::Int, nullptr, "minimum latitude geofence, degrees X 10^6 N"),
-  COMMAND(cmd_set_max_latitude, "max_latitude", ArgType::Int, nullptr, "maximum latitude geofence, degrees X 10^6 N"),
-  COMMAND(cmd_set_min_longitude, "min_longitude", ArgType::Int, nullptr, "minimum longitude geofence, degrees X 10^6 E"),
-  COMMAND(cmd_set_max_longitude, "max_longitude", ArgType::Int, nullptr, "maximum longitude geofence, degrees X 10^6 E"),
-};
-
-Command commands[] {
-  COMMAND(cmd_help, "help", nullptr, "list cmds"),
-  COMMAND(cmd_ping, "ping", ArgType::String, nullptr, "link test"),
-  COMMAND(cmd_show, "show", nullptr, "show params"),
-  COMMAND(cmd_set, "set", subCommands, "set params"),
-  COMMAND(cmd_letdown, "letdown", ArgType::Int, nullptr, "actuate letdown <int> seconds"),
-  COMMAND(cmd_cut, "cut", ArgType::Int, nullptr, "actuate cutter unit_id <int>"),
-  COMMAND(cmd_update, "update", ArgType::Int, nullptr, "temp change update rate"),
-};
-
-void cmd_help(SerialCommands& sender, Args& args) {
-  sender.listCommands();
-}
-
-void cmd_update(SerialCommands& sender, Args& args) {
-  update_interval = args[0].getInt();
-  sender.getSerial().print(F("update_interval="));
-  sender.getSerial().println(update_interval);
-}
-
-void cmd_ping(SerialCommands& sender, Args& args) {
-  sender.getSerial().print(F("pong "));
-  sender.getSerial().println(args[0].getString());
-}
-
-void cmd_cut(SerialCommands& sender, Args& args) {
-  if (args[0].getInt() == unit_id) {
-    sender.getSerial().println(F("cutter activated"));
-    active_state = CUT_INIT;
-  } else {
-    sender.getSerial().println(F("unit_id mismatch"));
-  }
-}
-
-// this command is only for ground testing, as puts you in flight mode
-// could be used if the pressure sensor goes nuts and the letdown doesn't trip
-void cmd_letdown(SerialCommands& sender, Args& args) {
-  sender.getSerial().println(F("letdown activating in 3 secs"));
-  active_state = LETDOWN_INIT;
-  launch_time = millis();
-  /*if (nmea.isValid()) {
-    launch_lat = nmea.getLatitude();  // millionths of degrees
-    launch_lon = nmea.getLongitude(); // millionths of degrees
-    nmea.getAltitude(launch_alt);  // altitude MSL
-  }*/
-/*  letdown_duration = args[0].getInt();
-  letdown_delay = 3;
-  LED_period = 500;  // long slow blink
-  LED_duration = 450;
-  digitalWrite(CUTTER, LOW);  // turn off cutter just in case
-}
-
-void cmd_show(SerialCommands& sender, Args& args) {
-  sender.getSerial().print(F("unit_id: "));
-  sender.getSerial().println(unit_id);
-  sender.getSerial().print(F("letdown_delay: "));
-  sender.getSerial().println(letdown_delay);
-  sender.getSerial().print(F("letdown_duration: "));
-  sender.getSerial().println(letdown_duration);
-  sender.getSerial().print(F("max_flight_duration: "));
-  sender.getSerial().println(max_flight_duration);
-  sender.getSerial().print(F("cut_pressure: "));
-  sender.getSerial().println(cut_pressure);
-  sender.getSerial().print(F("cut_duration: "));
-  sender.getSerial().println(cut_duration);
-  sender.getSerial().print(F("rise_rate_threshold: "));
-  sender.getSerial().println(rise_rate_threshold);
-  sender.getSerial().print(F("update_interval: "));
-  sender.getSerial().println(update_interval);
-  sender.getSerial().print(F("max_distance: "));
-  sender.getSerial().println(max_distance);
-  sender.getSerial().print(F("min_latitude: "));
-  sender.getSerial().println(min_latitude);
-  sender.getSerial().print(F("max_latitude: "));
-  sender.getSerial().println(max_latitude);
-  sender.getSerial().print(F("min_longitude: "));
-  sender.getSerial().println(min_longitude);
-  sender.getSerial().print(F("max_longitude: "));
-  sender.getSerial().println(max_longitude);
-  sender.getSerial().print(F("active_state: "));
-  sender.getSerial().println(active_state);
-
-}
-
-void cmd_set(SerialCommands& sender, Args& args) {
-  sender.listAllCommands(subCommands, sizeof(subCommands) / sizeof(Command));
-}
-
-void cmd_set_unit_id(SerialCommands& sender, Args& args) {
-  unsigned int number = args[0].getInt();
-  EEPROM.put(0 * sizeof(unsigned int), (unsigned int)number); // save serial number
-  unit_id = number;  // set serial in ram as well
-  sender.getSerial().print(F("unit_id="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_letdown_delay(SerialCommands& sender, Args& args) {
-  unsigned int number = args[0].getInt();
-  EEPROM.put(1 * sizeof(unsigned int), (unsigned int)number); // save number
-  letdown_delay = number;  // set in ram as well
-  sender.getSerial().print(F("letdown_delay="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_letdown_duration(SerialCommands& sender, Args& args) {
-  auto number = args[0].getInt();
-  EEPROM.put(2 * sizeof(unsigned int), (unsigned int)number); // save number
-  letdown_duration = number;  // set in ram as well
-  sender.getSerial().print(F("letdown_duration="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_max_flight_duration(SerialCommands& sender, Args& args) {
-  auto number = args[0].getInt();
-  EEPROM.put(3 * sizeof(unsigned int), (unsigned int)number); // save number
-  max_flight_duration = number;  // set in ram as well
-  sender.getSerial().print(F("max_flight_duration="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_cut_pressure(SerialCommands& sender, Args& args) {
-  auto number = args[0].getInt();
-  EEPROM.put(4 * sizeof(unsigned int), (unsigned int)number); // save number
-  cut_pressure = number;  // set in ram as well
-  sender.getSerial().print(F("cut_pressure="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_cut_duration(SerialCommands& sender, Args& args) {
-  auto number = args[0].getInt();
-  EEPROM.put(5 * sizeof(unsigned int), (unsigned int)number); // save number
-  cut_duration = number;  // set in ram as well
-  sender.getSerial().print(F("cut_duration="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_rise_rate_threshold(SerialCommands& sender, Args& args) {
-  auto number = args[0].getInt();
-  EEPROM.put(6 * sizeof(unsigned int), (unsigned int)number); // save number
-  rise_rate_threshold = number;  // set in ram as well
-  sender.getSerial().print(F("rise_rate_threshold="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_update_interval(SerialCommands& sender, Args& args) {
-  auto number = args[0].getInt();
-  EEPROM.put(7 * sizeof(unsigned int), (unsigned int)number); // save number
-  update_interval = number;  // set in ram as well
-  sender.getSerial().print(F("update_interval="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_max_distance(SerialCommands& sender, Args& args) {
-  unsigned long number = args[0].getInt();
-  EEPROM.put(8 * sizeof(unsigned int) + 0 * sizeof(long), (unsigned long)number); // save unsigned long distance
-  max_distance = number;  // set in ram as well
-  sender.getSerial().print(F("max_distance="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_min_latitude(SerialCommands& sender, Args& args) {
-  long number = args[0].getInt();
-  EEPROM.put(8 * sizeof(unsigned int) + 1 * sizeof(long), (long)number); // save long min_latitude
-  min_latitude = number;  // set in ram as well
-  sender.getSerial().print(F("min_latitude="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_max_latitude(SerialCommands& sender, Args& args) {
-  long number = args[0].getInt();
-  EEPROM.put(8 * sizeof(unsigned int) + 2 * sizeof(long), (long)number); // save long max_latitude
-  max_latitude = number;  // set in ram as well
-  sender.getSerial().print(F("max_latitude="));
-  sender.getSerial().println(number);
-}
-
-
-void cmd_set_min_longitude(SerialCommands& sender, Args& args) {
-  long number = args[0].getInt();
-  EEPROM.put(8 * sizeof(unsigned int) + 3 * sizeof(long), (long)number); // save long min_longitude
-  min_longitude = number;  // set in ram as well
-  sender.getSerial().print(F("min_longitude="));
-  sender.getSerial().println(number);
-}
-
-void cmd_set_max_longitude(SerialCommands& sender, Args& args) {
-  long number = args[0].getInt();
-  EEPROM.put(8 * sizeof(unsigned int) + 4 * sizeof(long), (long)number); // save long max_longitude
-  max_longitude = number;  // set in ram as well
-  sender.getSerial().print(F("max_longitude="));
-  sender.getSerial().println(number);
-}
-*/
-
-/*char buffer[80];  // a buffer big enough to hold serial commands or reminder prompts
-SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command),
-                              buffer, sizeof(buffer));
-*/
-
-// distance between points on earth in meters
-// lat/lon in millionths of degrees (divide by 1,000,000 for degrees)
-/*double haversine(double lat1, double lon1, double lat2, double lon2) {
-  const double earth_radius = 6371009;  // earth radius in meters
-  //const double pi180 = 3.1415926535897932384626433832795/180.0/1000000.0;
-  // PI/180/1000000   convert millionths of degrees to radians
-  const double pi180 = 0.000000017453292519943295769236907684886127134428718885417254560971;
-
-  // convert millionths of degrees to radians
-  //double dlat = (double)(lat2 - lat1) * pi180;
-  double dlon = (double)(lon2 - lon1) * pi180;
-  lat1 = lat1 * pi180;
-  lat2 = lat2 * pi180;
-  double dlat = lat2 - lat1;
+uint8_t MT_buffer[96];  // buffer for mobile terminated messages (to rockblock)
+size_t MT_buffer_size; // = sizeof(MT_buffer);
+uint8_t status;  // return status of satellite commands
+int16_t x;  // rando temp variable 
   
-  double dist = 2 * earth_radius * asin(
-                  sqrt( pow(sin( (dlat / 2)), 2)
-                        + pow(sin( (dlon / 2)), 2)
-                        * cos(lat1) * cos(lat2)));
-  
-  return (dist); // great circle distance in km
-}
-*/
+// declare the reset function
+void(* resetFunc) (void) = 0;
 
-void printHex(Stream &out, uint8_t* c, uint16_t count) {
-  for(int i=0; i<count; i++) {
-    if ( c[i] < 0x10 ) { // add leading zero to hex numbers < 0x10. 0x01, 0x02... 0x0F
+// print 255 as FF, 10 as 0A, etc
+void print_hex_char(Stream &out, uint8_t c) {
+  if ( c < 0x10 ) { // add leading zero to hex numbers < 0x10. 0x01, 0x02... 0x0F
        out.write('0');
     }
-    out.print(c[i], HEX);
+    out.print(c, HEX);
+}
+
+// print a whole buffer as hex
+void print_hex_buffer(Stream &out, uint8_t* c, uint16_t count) {
+  for(int i=0; i<count; i++) {
+    print_hex_char(out, c[i]);
   }
+}
+
+uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
+
+    #ifdef DEBUG_PROCESS_CMD
+    print_hex_buffer(consoleSerial,buffer,buffer_size);
+    consoleSerial.write(':');
+    consoleSerial.println(buffer_size);
+    #endif
+    
+    // CUT command:  CUTxx  where xx is uint16_t unit_id (deprecated)
+    // CUT command:  CUT (3 bytes)
+    //if ((buffer_size == 5) && !strncmp(buffer, "CUT", 3) && !strncmp(buffer+3, config.unit_id, 2)) {
+    if ((buffer_size == 3) && !strncmp(buffer, "CUT", 3) ) {
+       #ifdef DEBUG
+      consoleSerial.println(F("*** CUT command"));
+      #endif
+      // do cut stuff here
+      return(1);  // good command status
+    }
+
+    // LET command: LETxx  activate letdown for xx milliseconds (deprecated
+    // LET command: LET (3 bytes)
+    else if ((buffer_size == 3) && !strncmp(buffer, "LET", 3)) {
+      // do letdown stuff here  
+      #ifdef DEBUG
+      consoleSerial.println(F("*** LET command"));
+      #endif
+      return(1);
+    }
+    
+    // PRG commmand:  store configuration structure to EEPROM
+    else if ((buffer_size == (36+3)) && !strncmp(buffer, "PRG", 3)) {
+      #ifdef DEBUG
+      consoleSerial.print(F("*** PRG "));
+      print_hex_buffer(consoleSerial, buffer+3, buffer_size-3);
+      consoleSerial.println();
+      #endif
+      // write config to EEPROM
+      //EEPROM.put(EEPROM_BASE_ADDR, (struct eeprom_config)(buffer+3) );
+      memcpy((uint8_t *)&config, buffer+3, sizeof(config));  // update config in memory
+      EEPROM.put(EEPROM_BASE_ADDR, config);  // write new config to EEPROM
+      // EEPROM.get(EEPROM_BASE_ADDR, config);  // read back from EEPROM
+      return(1);
+    }
+
+    // UPD command:  change satellite update interval to xx seconds
+    else if ((buffer_size == 5) && !strncmp(buffer, "UPD", 3)) {
+      config.update_interval_satellite = (uint16_t)*(buffer+3);
+      #ifdef DEBUG
+      consoleSerial.print(F("*** UPD "));
+      consoleSerial.print(config.update_interval_satellite);
+      consoleSerial.println();
+      #endif
+      return(1);
+    }
+
+    else if ((buffer_size==3) && !strncmp(buffer, "END", 3)) {
+      return(2);   // exit serial command mode
+    }
+    
+    return(0);  // no valid command found
 }
 
 void setup() {
@@ -471,13 +287,15 @@ void setup() {
 
   // set up GPS LED
   pinMode(LED_GPS, OUTPUT);
+  digitalWrite(LED_GPS, LOW);
   // set up output indicator LED
   pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
 
   // avoid double setup
   delay(2000);
   
-  // blink all led on on boot for 1 sec
+  // blink all led on on boot for 1 sec (lamp test)
   digitalWrite(LED_BUILTIN, HIGH);
   digitalWrite(LED_GPS, HIGH);
   delay(1000);
@@ -486,16 +304,105 @@ void setup() {
   //delay(1000);
   
   // set serial port baud rates
-  
-
   satSerial.begin(19200);  // hardware serial is connected to satellite radio
   consoleSerial.begin(19200);  // software serial to debugging console
-  gpsSerial.begin(9600);  // software serial to gps receiver
-  gpsSerial.listen();
-
+  consoleSerial.listen();
+  
   #ifdef DEBUG
     consoleSerial.println(F("\r\n*** Start setup()"));
   #endif
+  
+  // read parameters from EEPROM-- things we can adjust for flight
+
+  //   force initial config by making unit_id 0xFFFF
+  //EEPROM.put(EEPROM_BASE_ADDR, (uint16_t)0xFFFF);
+  
+  #ifdef DEBUG
+  //consoleSerial.println("*** reading EEPROM");
+  #endif
+  EEPROM.get(EEPROM_BASE_ADDR, config); 
+  #ifdef DEBUG
+  consoleSerial.print(F("*** EEPROM "));
+  print_hex_buffer(consoleSerial,(uint8_t *)&config, sizeof(struct eeprom_config));
+  consoleSerial.println();
+  #endif
+
+/*  EEPROM.get(EEPROM_BASE_ADDR, config.unit_id);
+  #ifdef DEBUG
+  consoleSerial.print("*** unit_id: ");
+  consoleSerial.println(config.unit_id, HEX);
+  #endif 
+*/
+  
+  // check for uninitialized EEPROM
+  if (config.unit_id == 0xFFFF) { // not initialized, so lets initialize it
+    #ifdef DEBUG
+    consoleSerial.println("*** initializing EEPROM");
+    #endif
+    config.unit_id = 0;
+    config.letdown_delay = 30000;
+    config.letdown_duration = 30000;
+    config.max_flight_duration = 0;
+    config.cut_pressure = 0;
+    config.cut_duration = 30000;
+    config.rise_rate_threshold = 0xFF;
+    config.update_interval_satellite = 60;
+    config.max_distance = 0;
+    config.min_latitude = 0;
+    config.max_latitude = 0;
+    config.min_longitude = 0;
+    config.max_longitude = 0; 
+    EEPROM.put(EEPROM_BASE_ADDR, config);  // write config to EEPROM
+  } 
+
+  #ifdef DEBUG
+  //consoleSerial.println(F("*** Press 'x' to enter setup mode"));
+  #endif
+  
+  // check for commands on serial port;
+
+  for(uint8_t i=0; i<10; i++) {
+    //int16_t x;
+    uint8_t counter = 0;
+    uint32_t timer = millis();  // timer for end of message
+    while( ((millis()-timer) < 1000L) ) {
+      if ( (x = consoleSerial.read()) > -1) {
+        timer = millis();  // reset timer
+        MT_buffer[counter++] = (uint8_t)x;   // load each serial rx character into cmd buffer until timeout
+      }
+    }
+    if (counter>0) {  // if some bytes were read
+      //print_hex_buffer(consoleSerial,MT_buffer,counter);
+      //consoleSerial.println();
+      //delay(100);
+      status = process_cmd(MT_buffer, counter);  // do the thing
+      if (status==0) {
+        consoleSerial.println(F("ERR"));  // process command returned error status
+        //print_hex_buffer(consoleSerial, MT_buffer, counter);
+        //consoleSerial.println();
+      } else if (status==1) {
+        consoleSerial.println(F("OK"));  // good command receive
+        //print_hex_buffer(consoleSerial, MT_buffer, counter);
+        //consoleSerial.println();
+      } else if (status==2) {
+        consoleSerial.println(F("END"));  // end command received
+        //print_hex_buffer(consoleSerial, (uint8_t)&config, sizeof(struct eeprom_config));  // config struct
+        //consoleSerial.println();
+        break;
+      }
+      //consoleSerial.println();
+    }
+  } 
+  
+
+  #ifdef DEBUG
+     consoleSerial.print(F("*** Config "));
+     print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
+     consoleSerial.println();
+  #endif
+  
+  gpsSerial.begin(9600);  // software serial to gps receiver
+  gpsSerial.listen();
 
   // Begin satellite modem operation
   #ifdef DEBUG
@@ -580,35 +487,6 @@ void setup() {
     consoleSerial.println(F("};"));
   #endif
 
-  // read parameters from EEPROM-- things we can adjust for flight
-
-  // unit address/ serial number
-  //EEPROM.get(0 * sizeof(unsigned int), unit_id);
-  #ifdef DEBUG
-  consoleSerial.println("*** reading EEPROM");
-  #endif
-  EEPROM.get(sizeof(struct eeprom_config), config); 
-
-  // check for uninitialized EEPROM
-  if (config.unit_id == 0xFFFF) { // not initialized, so lets initialize it
-    #ifdef DEBUG
-    consoleSerial.println("*** initializing EEPROM");
-    #endif
-    config.unit_id = 0;
-    config.letdown_delay = 30000;
-    config.letdown_duration = 30000;
-    config.max_flight_duration = 0;
-    config.cut_pressure = 0;
-    config.cut_duration = 30000;
-    config.rise_rate_threshold = 100;
-    config.update_interval_satellite = 60;
-    config.max_distance = 0;
-    config.min_latitude = 0;
-    config.max_latitude = 0;
-    config.min_longitude = 0;
-    config.max_longitude = 0; 
-    EEPROM.put(sizeof(struct eeprom_config), config);  // write config to EEPROM
-  } 
 
 
 #ifdef BMP180
@@ -649,6 +527,7 @@ void setup() {
       digitalWrite(RESET_PIN, HIGH);
       delay(200);
     }
+    resetFunc();  // go back to setup()
   }
 #endif
 
@@ -744,8 +623,6 @@ void loop() {
 
   static uint32_t last_update_millis, this_update_millis;
   struct sat_message beacon;
-  uint8_t MT_buffer[100];  // buffer for mobile terminated messages (to rockblock)
-  size_t MT_buffer_size = sizeof(MT_buffer);
   
   // send/receive sat message here, which will repeatedly call ISBDCallback while idle
   this_update_millis = (millis() % ((uint32_t)1000*(uint32_t)config.update_interval_satellite));
@@ -775,7 +652,7 @@ void loop() {
     #ifdef DEBUG
     consoleSerial.print(F("*** SDB TX: "));
     uint8_t *pointer = (uint8_t *)&beacon;
-    printHex(consoleSerial, pointer, sizeof(beacon));
+    print_hex_buffer(consoleSerial, pointer, sizeof(beacon));
     consoleSerial.print(F(" size "));
     consoleSerial.print(sizeof(beacon));
     consoleSerial.println();
@@ -790,24 +667,26 @@ void loop() {
       //modem.enable9603Npower(true); // Enable power for the 9603N
       //consoleSerial.println("modem turned on");
       //modem.begin(); // Wake up the modem
-      uint8_t status = modem.sendReceiveSBDBinary((uint8_t *)&beacon, sizeof(beacon), MT_buffer, MT_buffer_size); // TX/RX a message in binary
+      status = modem.sendReceiveSBDBinary((uint8_t *)&beacon, sizeof(beacon), MT_buffer, MT_buffer_size); // TX/RX a message in binary
       #ifdef DEBUG
-      consoleSerial.print(F("*** SDB RX (hex): "));
-      printHex(consoleSerial, MT_buffer, MT_buffer_size);
-      consoleSerial.print(F(" size "));
-      consoleSerial.println(MT_buffer_size, HEX);
-      consoleSerial.print(F("*** SDB RX (asc): "));
-      for(int i=0; i<MT_buffer_size; i++) {
-          if ( isprint(MT_buffer[i])) { // print RX message printable characters
-              consoleSerial.write(MT_buffer[i]);
-          } else {
-              consoleSerial.write('(');
-              printHex(consoleSerial,&MT_buffer[i],1);
-              consoleSerial.write(')');
-          }
+      if (MT_buffer_size>0) {
+        consoleSerial.print(F("*** SDB RX (hex): "));
+        print_hex_buffer(consoleSerial, MT_buffer, MT_buffer_size);
+        consoleSerial.print(F(" size "));
+        consoleSerial.println(MT_buffer_size, HEX);
+        consoleSerial.print(F("*** SDB RX (asc): "));
+        for(int i=0; i<MT_buffer_size; i++) {
+            if ( isprint(MT_buffer[i])) { // print RX message printable characters
+                consoleSerial.write(MT_buffer[i]);
+            } else {
+                consoleSerial.write('(');
+                print_hex_char(consoleSerial,MT_buffer[i]);
+                consoleSerial.write(')');
+            }
+        }
+        consoleSerial.print(F(" size "));
+        consoleSerial.println(MT_buffer_size);
       }
-      consoleSerial.print(F(" size "));
-      consoleSerial.println(MT_buffer_size);
       consoleSerial.print(F("*** SBD TX/RX status: "));
       consoleSerial.println(status);
       // Clear the Mobile Originated message buffer to avoid re-sending the message during subsequent loops
@@ -833,27 +712,14 @@ void loop() {
 
     // process incoming message
 
-    // CUT command:  CUTxx  where xx is uint16_t unit_id
-    if (!strncmp(MT_buffer, "CUT", 3) && !strncmp(MT_buffer+3, config.unit_id, 2)) {
-      #ifdef DEBUG
-      consoleSerial.println(F("*** CUT command from sat"));
-      #endif
-      // do cut stuff here
-    }
-
-    // PRG commmand:  store configuration structure to EEPROM
-    else if (!strncmp(MT_buffer, "PRG", 3) && (MT_buffer_size == (31+3))) {
-      #ifdef DEBUG
-      consoleSerial.print(F("*** PRG "));
-      printHex(consoleSerial, MT_buffer, MT_buffer_size);
-      #endif
-
-      // do EEPROM writing and re-read parameters here
-    }
-
-    //PNG command:  return bytes 
-    else if (!strncmp(MT_buffer, "PNG", 3)) {
-      //  send MT_buffer back
+    if (MT_buffer_size > 0) {
+      //PNG command:  return bytes 
+      if (!strncmp(MT_buffer, "PNG", 3)) {
+        //  send MT_buffer back
+        status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size-3); // TX/RX a message in binary
+      } else {
+        process_cmd(MT_buffer, MT_buffer_size);
+      }
     }
   }
   
@@ -1197,3 +1063,265 @@ void ISBDDiagsCallback(IridiumSBD *device, char c)
   consoleSerial.write(c);
 }
 #endif
+
+
+
+/*void cmd_help(SerialCommands& sender, Args& args);
+void cmd_ping(SerialCommands& sender, Args& args);
+void cmd_show(SerialCommands& sender, Args& args);
+void cmd_cut(SerialCommands& sender, Args& args);
+void cmd_letdown(SerialCommands& sender, Args& args);
+void cmd_update(SerialCommands& sender, Args& args);
+void cmd_set(SerialCommands& sender, Args& args);
+void cmd_set_unit_id(SerialCommands& sender, Args& args);
+void cmd_set_letdown_delay(SerialCommands& sender, Args& args);
+void cmd_set_letdown_duration(SerialCommands& sender, Args& args);
+void cmd_set_max_flight_duration(SerialCommands& sender, Args& args);
+void cmd_set_cut_pressure(SerialCommands& sender, Args& args);
+void cmd_set_cut_duration(SerialCommands& sender, Args& args);
+void cmd_set_rise_rate_threshold(SerialCommands& sender, Args& args);
+void cmd_set_update_interval(SerialCommands& sender, Args& args);
+void cmd_set_max_distance(SerialCommands& sender, Args& args);
+void cmd_set_min_latitude(SerialCommands& sender, Args& args);
+void cmd_set_max_latitude(SerialCommands& sender, Args& args);
+void cmd_set_min_longitude(SerialCommands& sender, Args& args);
+void cmd_set_max_longitude(SerialCommands& sender, Args& args);
+
+Command subCommands [] {
+  COMMAND(cmd_set_unit_id, "unit_id", ArgType::Int, nullptr, "unique address"),
+  COMMAND(cmd_set_letdown_delay, "letdown_delay", ArgType::Int, nullptr, "activation after launch, secs"),
+  COMMAND(cmd_set_letdown_duration, "letdown_duration", ArgType::Int, nullptr, "time to lower, secs"),
+  COMMAND(cmd_set_max_flight_duration, "max_flight_duration", ArgType::Int, nullptr, "elapsed time to terminate flight, secs"),
+  COMMAND(cmd_set_cut_pressure, "cut_pressure", ArgType::Int, nullptr, "pressure to terminate flight, mbar"),
+  COMMAND(cmd_set_cut_duration, "cut_duration", ArgType::Int, nullptr, "how long to activate cutter, secs"),
+  COMMAND(cmd_set_rise_rate_threshold, "rise_rate_threshold", ArgType::Int, nullptr, "let-down trigger sensitivity (~500-1000)"),
+  COMMAND(cmd_set_update_interval, "update_interval", ArgType::Int, nullptr, "how often to send beacon 0=disable, secs"),
+  COMMAND(cmd_set_max_distance, "max_distance", ArgType::Int, nullptr, "distance from launch to terminate flight, meters"),
+  COMMAND(cmd_set_min_latitude, "min_latitude", ArgType::Int, nullptr, "minimum latitude geofence, degrees X 10^6 N"),
+  COMMAND(cmd_set_max_latitude, "max_latitude", ArgType::Int, nullptr, "maximum latitude geofence, degrees X 10^6 N"),
+  COMMAND(cmd_set_min_longitude, "min_longitude", ArgType::Int, nullptr, "minimum longitude geofence, degrees X 10^6 E"),
+  COMMAND(cmd_set_max_longitude, "max_longitude", ArgType::Int, nullptr, "maximum longitude geofence, degrees X 10^6 E"),
+};
+
+Command commands[] {
+  COMMAND(cmd_help, "help", nullptr, "list cmds"),
+  COMMAND(cmd_ping, "ping", ArgType::String, nullptr, "link test"),
+  COMMAND(cmd_show, "show", nullptr, "show params"),
+  COMMAND(cmd_set, "set", subCommands, "set params"),
+  COMMAND(cmd_letdown, "letdown", ArgType::Int, nullptr, "actuate letdown <int> seconds"),
+  COMMAND(cmd_cut, "cut", ArgType::Int, nullptr, "actuate cutter unit_id <int>"),
+  COMMAND(cmd_update, "update", ArgType::Int, nullptr, "temp change update rate"),
+};
+
+void cmd_help(SerialCommands& sender, Args& args) {
+  sender.listCommands();
+}
+
+void cmd_update(SerialCommands& sender, Args& args) {
+  update_interval = args[0].getInt();
+  sender.getSerial().print(F("update_interval="));
+  sender.getSerial().println(update_interval);
+}
+
+void cmd_ping(SerialCommands& sender, Args& args) {
+  sender.getSerial().print(F("pong "));
+  sender.getSerial().println(args[0].getString());
+}
+
+void cmd_cut(SerialCommands& sender, Args& args) {
+  if (args[0].getInt() == unit_id) {
+    sender.getSerial().println(F("cutter activated"));
+    active_state = CUT_INIT;
+  } else {
+    sender.getSerial().println(F("unit_id mismatch"));
+  }
+}
+
+// this command is only for ground testing, as puts you in flight mode
+// could be used if the pressure sensor goes nuts and the letdown doesn't trip
+void cmd_letdown(SerialCommands& sender, Args& args) {
+  sender.getSerial().println(F("letdown activating in 3 secs"));
+  active_state = LETDOWN_INIT;
+  launch_time = millis();
+  /*if (nmea.isValid()) {
+    launch_lat = nmea.getLatitude();  // millionths of degrees
+    launch_lon = nmea.getLongitude(); // millionths of degrees
+    nmea.getAltitude(launch_alt);  // altitude MSL
+  }*/
+/*  letdown_duration = args[0].getInt();
+  letdown_delay = 3;
+  LED_period = 500;  // long slow blink
+  LED_duration = 450;
+  digitalWrite(CUTTER, LOW);  // turn off cutter just in case
+}
+
+void cmd_show(SerialCommands& sender, Args& args) {
+  sender.getSerial().print(F("unit_id: "));
+  sender.getSerial().println(unit_id);
+  sender.getSerial().print(F("letdown_delay: "));
+  sender.getSerial().println(letdown_delay);
+  sender.getSerial().print(F("letdown_duration: "));
+  sender.getSerial().println(letdown_duration);
+  sender.getSerial().print(F("max_flight_duration: "));
+  sender.getSerial().println(max_flight_duration);
+  sender.getSerial().print(F("cut_pressure: "));
+  sender.getSerial().println(cut_pressure);
+  sender.getSerial().print(F("cut_duration: "));
+  sender.getSerial().println(cut_duration);
+  sender.getSerial().print(F("rise_rate_threshold: "));
+  sender.getSerial().println(rise_rate_threshold);
+  sender.getSerial().print(F("update_interval: "));
+  sender.getSerial().println(update_interval);
+  sender.getSerial().print(F("max_distance: "));
+  sender.getSerial().println(max_distance);
+  sender.getSerial().print(F("min_latitude: "));
+  sender.getSerial().println(min_latitude);
+  sender.getSerial().print(F("max_latitude: "));
+  sender.getSerial().println(max_latitude);
+  sender.getSerial().print(F("min_longitude: "));
+  sender.getSerial().println(min_longitude);
+  sender.getSerial().print(F("max_longitude: "));
+  sender.getSerial().println(max_longitude);
+  sender.getSerial().print(F("active_state: "));
+  sender.getSerial().println(active_state);
+
+}
+
+void cmd_set(SerialCommands& sender, Args& args) {
+  sender.listAllCommands(subCommands, sizeof(subCommands) / sizeof(Command));
+}
+
+void cmd_set_unit_id(SerialCommands& sender, Args& args) {
+  unsigned int number = args[0].getInt();
+  EEPROM.put(0 * sizeof(unsigned int), (unsigned int)number); // save serial number
+  unit_id = number;  // set serial in ram as well
+  sender.getSerial().print(F("unit_id="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_letdown_delay(SerialCommands& sender, Args& args) {
+  unsigned int number = args[0].getInt();
+  EEPROM.put(1 * sizeof(unsigned int), (unsigned int)number); // save number
+  letdown_delay = number;  // set in ram as well
+  sender.getSerial().print(F("letdown_delay="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_letdown_duration(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(2 * sizeof(unsigned int), (unsigned int)number); // save number
+  letdown_duration = number;  // set in ram as well
+  sender.getSerial().print(F("letdown_duration="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_max_flight_duration(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(3 * sizeof(unsigned int), (unsigned int)number); // save number
+  max_flight_duration = number;  // set in ram as well
+  sender.getSerial().print(F("max_flight_duration="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_cut_pressure(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(4 * sizeof(unsigned int), (unsigned int)number); // save number
+  cut_pressure = number;  // set in ram as well
+  sender.getSerial().print(F("cut_pressure="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_cut_duration(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(5 * sizeof(unsigned int), (unsigned int)number); // save number
+  cut_duration = number;  // set in ram as well
+  sender.getSerial().print(F("cut_duration="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_rise_rate_threshold(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(6 * sizeof(unsigned int), (unsigned int)number); // save number
+  rise_rate_threshold = number;  // set in ram as well
+  sender.getSerial().print(F("rise_rate_threshold="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_update_interval(SerialCommands& sender, Args& args) {
+  auto number = args[0].getInt();
+  EEPROM.put(7 * sizeof(unsigned int), (unsigned int)number); // save number
+  update_interval = number;  // set in ram as well
+  sender.getSerial().print(F("update_interval="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_max_distance(SerialCommands& sender, Args& args) {
+  unsigned long number = args[0].getInt();
+  EEPROM.put(8 * sizeof(unsigned int) + 0 * sizeof(long), (unsigned long)number); // save unsigned long distance
+  max_distance = number;  // set in ram as well
+  sender.getSerial().print(F("max_distance="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_min_latitude(SerialCommands& sender, Args& args) {
+  long number = args[0].getInt();
+  EEPROM.put(8 * sizeof(unsigned int) + 1 * sizeof(long), (long)number); // save long min_latitude
+  min_latitude = number;  // set in ram as well
+  sender.getSerial().print(F("min_latitude="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_max_latitude(SerialCommands& sender, Args& args) {
+  long number = args[0].getInt();
+  EEPROM.put(8 * sizeof(unsigned int) + 2 * sizeof(long), (long)number); // save long max_latitude
+  max_latitude = number;  // set in ram as well
+  sender.getSerial().print(F("max_latitude="));
+  sender.getSerial().println(number);
+}
+
+
+void cmd_set_min_longitude(SerialCommands& sender, Args& args) {
+  long number = args[0].getInt();
+  EEPROM.put(8 * sizeof(unsigned int) + 3 * sizeof(long), (long)number); // save long min_longitude
+  min_longitude = number;  // set in ram as well
+  sender.getSerial().print(F("min_longitude="));
+  sender.getSerial().println(number);
+}
+
+void cmd_set_max_longitude(SerialCommands& sender, Args& args) {
+  long number = args[0].getInt();
+  EEPROM.put(8 * sizeof(unsigned int) + 4 * sizeof(long), (long)number); // save long max_longitude
+  max_longitude = number;  // set in ram as well
+  sender.getSerial().print(F("max_longitude="));
+  sender.getSerial().println(number);
+}
+*/
+
+/*char buffer[80];  // a buffer big enough to hold serial commands or reminder prompts
+SerialCommands serialCommands(Serial, commands, sizeof(commands) / sizeof(Command),
+                              buffer, sizeof(buffer));
+*/
+
+// distance between points on earth in meters
+// lat/lon in millionths of degrees (divide by 1,000,000 for degrees)
+/*double haversine(double lat1, double lon1, double lat2, double lon2) {
+  const double earth_radius = 6371009;  // earth radius in meters
+  //const double pi180 = 3.1415926535897932384626433832795/180.0/1000000.0;
+  // PI/180/1000000   convert millionths of degrees to radians
+  const double pi180 = 0.000000017453292519943295769236907684886127134428718885417254560971;
+
+  // convert millionths of degrees to radians
+  //double dlat = (double)(lat2 - lat1) * pi180;
+  double dlon = (double)(lon2 - lon1) * pi180;
+  lat1 = lat1 * pi180;
+  lat2 = lat2 * pi180;
+  double dlat = lat2 - lat1;
+  
+  double dist = 2 * earth_radius * asin(
+                  sqrt( pow(sin( (dlat / 2)), 2)
+                        + pow(sin( (dlon / 2)), 2)
+                        * cos(lat1) * cos(lat2)));
+  
+  return (dist); // great circle distance in km
+}
+*/
