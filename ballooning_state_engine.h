@@ -10,11 +10,12 @@ struct sat_message {
   int32_t latitude;   // N, millionths of degrees
   int32_t longitude;  // E, millionths of degrees
   int16_t altitude;    // up to 32767 meters, 107,503 ft
-  int16_t course;   // 10ths of a degree
-  int16_t speed;    // 10ths of m/s
+  int16_t course;   // 100ths of a degree
+  int16_t speed;    // 100ths of knot
   uint32_t pressure;   // Pa 0-172369
   int16_t temperature;      // in tenths of deg C.  0-100 -> 0-1000
   int16_t humidity; // in tenths of percent 0-100% -> 0-1000
+  uint16_t batt_voltage;  // 0-1023; 1023 = 10V.  3:1 voltage divider on input voltage
 };
 
 struct eeprom_config {

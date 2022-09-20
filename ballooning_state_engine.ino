@@ -8,7 +8,7 @@
 /* subset of commands for satellite
  *  PNG{stuff}             return binary string {stuff}
  *  PRG{struct config}     program EEPROM with config structure
- *  LET{uint16_t time)     activate letdown for time milliseconds
+ *  LET{uint16_t time)     activate MOTOR for time milliseconds
  *  CUT{unit_id}           initiate cutting immediately if unit_id matches
  */
 
@@ -23,8 +23,11 @@
 // if using BMP180 pressure sensor
 //#define BMP180
 
-// if using MPR pressure sensor
-#define MPR
+// if using MPRLS pressure sensor
+//#define MPR
+
+// if using MPL3115A2 pressure sensor
+#define MPL3115A2
 
 // if using FAKE pressure for testing
 //#define FAKE_PRESSURE
@@ -48,6 +51,11 @@
 #define EOC_PIN -1   // set to any GPIO pin to read end-of-conversion by pin
 Adafruit_MPRLS mpr = Adafruit_MPRLS(RESET_PIN, EOC_PIN);
 #endif 
+
+#ifdef MPL3115A2
+#include <Adafruit_MPL3115A2.h>
+Adafruit_MPL3115A2 baro;
+#endif
 
 #include <SoftwareSerial.h>
 //#include <NeoSWSerial.h>
@@ -88,6 +96,9 @@ Adafruit_MPRLS mpr = Adafruit_MPRLS(RESET_PIN, EOC_PIN);
 // GPS LED port
 #define LED_GPS (12)
 
+// battery voltage analog input
+#define BATT_SENSE A3
+
 // length of filter (N must be odd)
 #define N (33)
 
@@ -115,7 +126,7 @@ uint16_t unit_id;
 static unsigned int letdown_delay;
 
 // how long to run the motor (seconds)
-static unsigned int letdown_duration;
+static unsigned int cut_duration;
 
 // when to terminate the flight (seconds)
 static unsigned int max_flight_duration;
@@ -142,9 +153,10 @@ static long max_longitude;
 
 // lines on rockblock labelled backwards; TX on RB is wired to TX on 328P
 #define satSerial Serial
+#define RING_PIN (8)
 SoftwareSerial gpsSerial (10,9); // RX, TX
 SoftwareSerial consoleSerial (7,6); // RX, TX 
-IridiumSBD modem(satSerial);  // Declare the IridiumSBD object
+IridiumSBD modem(satSerial, -1, RING_PIN);  // Declare the IridiumSBD object
 TinyGPSPlus gps;  // Declare the TinyGPSPlus object
 
 // vector of filter coefficients
@@ -170,11 +182,13 @@ enum state
   FLIGHT,
   CUT_INIT,
   CUT_ACTIVE,
-  POST_FLIGHT
+  POST_FLIGHT,
+  SETUP,
 };
+
 typedef enum state state; /* also a typedef of same identifier */
 
-state active_state = PRELAUNCH;  // initial state
+state active_state = SETUP;  // initial state
 
 bool loopEnabled = false; // turn on/off SBD callback
 
@@ -188,6 +202,7 @@ float launch_lat;
 float launch_lon;
 float launch_alt;
 
+uint16_t batt_voltage;
 uint32_t current_pressure;
 uint32_t pressure_sample;
 int32_t rise_rate;
@@ -196,8 +211,9 @@ uint8_t MT_buffer[96];  // buffer for mobile terminated messages (to rockblock)
 size_t MT_buffer_size; // = sizeof(MT_buffer);
 uint8_t status;  // return status of satellite commands
 int16_t x;  // rando temp variable 
+uint32_t timer;  // store millis() value for timing
   
-// declare the reset function
+// declare the reset function so we can restart program
 void(* resetFunc) (void) = 0;
 
 // print 255 as FF, 10 as 0A, etc
@@ -231,6 +247,11 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       consoleSerial.println(F("*** CUT command"));
       #endif
       // do cut stuff here
+      timer = millis();
+      while ( (millis()-timer) < config.cut_duration) {
+        digitalWrite(CUTTER, HIGH);
+      }
+      digitalWrite(CUTTER, LOW);
       return(1);  // good command status
     }
 
@@ -241,6 +262,11 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       #ifdef DEBUG
       consoleSerial.println(F("*** LET command"));
       #endif
+      timer = millis();
+      while ( (millis()-timer) < config.cut_duration) {
+        digitalWrite(MOTOR, HIGH);
+      }
+      digitalWrite(MOTOR, LOW);
       return(1);
     }
     
@@ -277,6 +303,18 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
     return(0);  // no valid command found
 }
 
+void error_flash(uint8_t flashes, uint8_t repeats) {
+  for (uint8_t repeat = 0; repeat < repeats; repeat++) {
+    for (uint8_t count = 0; count < flashes; count++) {
+        digitalWrite(LED_BUILTIN, HIGH);  // blink LED to indicate problem
+        delay(100);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(100);
+    }
+    delay(300);  // extra space between repetition of code
+  }
+}
+
 void setup() {
 
   // configure control ports and make sure they're off
@@ -292,8 +330,19 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
+  // iridium modem ring signal
+  pinMode(RING_PIN, INPUT);
+
+#ifdef MPR
+  // pressure sensor reset
+  pinMode(RESET_PIN, OUTPUT);
+  digitalWrite(RESET_PIN, LOW); // initiate reset
+#endif
+
+  active_state = SETUP;  // we in setup mode now
+  
   // avoid double setup
-  delay(2000);
+  delay(5000);
   
   // blink all led on on boot for 1 sec (lamp test)
   digitalWrite(LED_BUILTIN, HIGH);
@@ -301,6 +350,9 @@ void setup() {
   delay(1000);
   digitalWrite(LED_BUILTIN, LOW);
   digitalWrite(LED_GPS, LOW);
+  #ifdef MPR
+  digitalWrite(RESET_PIN, HIGH);  // take pressure sensor out of reset
+  #endif
   //delay(1000);
   
   // set serial port baud rates
@@ -341,7 +393,7 @@ void setup() {
     #endif
     config.unit_id = 0;
     config.letdown_delay = 30000;
-    config.letdown_duration = 30000;
+    config.cut_duration = 30000;
     config.max_flight_duration = 0;
     config.cut_pressure = 0;
     config.cut_duration = 30000;
@@ -354,17 +406,16 @@ void setup() {
     config.max_longitude = 0; 
     EEPROM.put(EEPROM_BASE_ADDR, config);  // write config to EEPROM
   } 
-
-  #ifdef DEBUG
-  //consoleSerial.println(F("*** Press 'x' to enter setup mode"));
-  #endif
   
   // check for commands on serial port;
 
   for(uint8_t i=0; i<10; i++) {
-    //int16_t x;
+
+    digitalWrite(LED_BUILTIN, i%2);  // blink LEDs during programming phase
+    digitalWrite(LED_GPS, !(i%2));
+    
     uint8_t counter = 0;
-    uint32_t timer = millis();  // timer for end of message
+    timer = millis();  // timer for end of message
     while( ((millis()-timer) < 1000L) ) {
       if ( (x = consoleSerial.read()) > -1) {
         timer = millis();  // reset timer
@@ -393,7 +444,9 @@ void setup() {
       //consoleSerial.println();
     }
   } 
-  
+
+  digitalWrite(LED_BUILTIN, LOW);  // make sure leds are off
+  digitalWrite(LED_GPS, LOW);
 
   #ifdef DEBUG
      consoleSerial.print(F("*** Config "));
@@ -411,24 +464,26 @@ void setup() {
   loopEnabled = false;  // disable SBD callback during setup
   modem.setPowerProfile(IridiumSBD::DEFAULT_POWER_PROFILE);  // high power
   //modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);  // for low power
-  int err = modem.begin();
-  if (err != ISBD_SUCCESS)
+  status = modem.begin();
+  if (status != ISBD_SUCCESS)
   {
-    consoleSerial.print(F("*** Iridium begin failed: error\r*** "));
-    consoleSerial.println(err);
-    if (err == ISBD_NO_MODEM_DETECTED)
+    consoleSerial.print(F("*** Iridium begin failed: error "));
+    consoleSerial.println(status);
+    if (status == ISBD_NO_MODEM_DETECTED) {
       consoleSerial.println(F("*** No modem detected: check wiring."));
-    return;
+      error_flash(2,3);
+      resetFunc();
+    }
   }
 
   #ifdef DEBUG_SDB
   // Print the firmware revision
   char version[12];
-  err = modem.getFirmwareVersion(version, sizeof(version));
-  if (err != ISBD_SUCCESS)
+  status = modem.getFirmwareVersion(version, sizeof(version));
+  if (status != ISBD_SUCCESS)
   {
      consoleSerial.print(F("*** FirmwareVersion failed: error "));
-     consoleSerial.println(err);
+     consoleSerial.println(status);
      return;
   }
   consoleSerial.print(F("*** Firmware Version is "));
@@ -436,11 +491,11 @@ void setup() {
 
   // Get the IMEI
   char IMEI[16];
-  err = modem.getIMEI(IMEI, sizeof(IMEI));
-  if (err != ISBD_SUCCESS)
+  status = modem.getIMEI(IMEI, sizeof(IMEI));
+  if (status != ISBD_SUCCESS)
   {
      consoleSerial.print(F("*** getIMEI failed: error "));
-     consoleSerial.println(err);
+     consoleSerial.println(status);
      return;
   }
   consoleSerial.print(F("*** IMEI is "));
@@ -450,11 +505,11 @@ void setup() {
   // This returns a number between 0 and 5.
   // 2 or better is preferred.
   int signalQuality;
-  err = modem.getSignalQuality(signalQuality);
-  if (err != ISBD_SUCCESS)
+  status = modem.getSignalQuality(signalQuality);
+  if (status != ISBD_SUCCESS)
   {
     consoleSerial.print(F("*** getSignalQuality failed: error "));
-    consoleSerial.println(err);
+    consoleSerial.println(status);
     return;
   }
 
@@ -492,13 +547,7 @@ void setup() {
 #ifdef BMP180
   while (!bmp.begin()) {
     consoleSerial.println("Could not find a valid BMP085/180 sensor, check wiring");
-    for (int i = 0; i < 4; i++) {
-      digitalWrite(LED_BUILTIN, HIGH);  // blink LED 4 times to indicate sensor problem
-      delay(50);
-      digitalWrite(LED_BUILTIN, LOW);
-      delay(50);
-    }
-    delay(400);  // give an extra time between the 4 pulses
+    error_flash(3,3);
   }
 #endif
 
@@ -518,15 +567,16 @@ void setup() {
   //#endif
   while(!mpr.begin())
   {
-    consoleSerial.println("*** Cannot connect to MPR sensor, resetting");
-    for (int i = 0; i < 2; i++) {
-      digitalWrite(LED_BUILTIN, HIGH);  // blink LED to indicate sensor problem
-      digitalWrite(RESET_PIN, LOW);
-      delay(300);
-      digitalWrite(LED_BUILTIN, LOW);
-      digitalWrite(RESET_PIN, HIGH);
-      delay(200);
-    }
+    consoleSerial.println(F("*** Cannot connect to MPRLS sensor, resetting"));
+    error_flash(3,3);
+    resetFunc();  // go back to setup()
+  }
+#endif
+
+#ifdef MPL3115A2
+  while(!baro.begin()) {
+    consoleSerial.println(F("*** Cannot connect to MPL3115A2, resetting"));
+    error_flash(3,3);
     resetFunc();  // go back to setup()
   }
 #endif
@@ -579,6 +629,10 @@ void setup() {
       digitalWrite(LED_BUILTIN, LOW);  // bad sample, turn off LED and try again
     }
   #endif MPR  
+
+  #ifdef MPL3115A2
+    sample[i] = baro.getPressure()*100;
+  #endif
   
     base_pressure += sample[i];  // base_pressure is only used for arduino simple serial plotter
 
@@ -601,7 +655,7 @@ void setup() {
     consoleSerial.println(F("*** End setup()"));
   #endif
 
-  n = 0;  // oldest sample, first to be replaced in buffer; n is the index into the circular buffer of pressures
+  n = 0;  // index to oldest sample, first to be replaced in buffer; n is the index into the circular buffer of pressures
 
   // set initial state of controller
   active_state = PRELAUNCH;
@@ -616,13 +670,15 @@ void setup() {
 
   // enable SBD callback
   loopEnabled = true;
-  
+    
 }
 
 void loop() {
 
   static uint32_t last_update_millis, this_update_millis;
   struct sat_message beacon;
+
+  ISBDCallback();  // if no message to send/receive then go ahead with loop
   
   // send/receive sat message here, which will repeatedly call ISBDCallback while idle
   this_update_millis = (millis() % ((uint32_t)1000*(uint32_t)config.update_interval_satellite));
@@ -630,8 +686,14 @@ void loop() {
   // when it's update time or there is a message waiting for RX, build the TX status message : 
   // example message: *** SDB TX: 000B21107916E8B8192A07531FA6E1B99101D7E100000 size 31
 
-  if ( (modem.getWaitingMessageCount() > 0)
+  if ( (!digitalRead(RING_PIN))
+        || (modem.getWaitingMessageCount() > 0)
         || (config.update_interval_satellite && (this_update_millis < last_update_millis))) {
+    #ifdef DEBUG
+    if (!digitalRead(RING_PIN)) {
+        consoleSerial.println(F("*** SDB RING"));
+    }
+    #endif
     beacon.unit_id = config.unit_id;
     beacon.state = active_state;
     beacon.second = gps.time.second();
@@ -643,11 +705,12 @@ void loop() {
     beacon.latitude = (uint32_t)(gps.location.lat()*(uint32_t)1000000);
     beacon.longitude = (uint32_t)(gps.location.lng()*(uint32_t)1000000);
     beacon.altitude = (int32_t)gps.altitude.meters();
-    beacon.course = (int16_t)(gps.course.value()*(int16_t)10);
-    beacon.speed = (int16_t)(gps.speed.mps()*(int16_t)10);
+    beacon.course = (int16_t)(gps.course.value());  // 100ths of degree
+    beacon.speed = (int16_t)(gps.speed.value()); // 100ths of knot
     beacon.pressure = current_pressure;
     beacon.temperature = 0*10; //current_temp*10;
     beacon.humidity = 0*10; //current_humidity*10;
+    beacon.batt_voltage = analogRead(BATT_SENSE);
     
     #ifdef DEBUG
     consoleSerial.print(F("*** SDB TX: "));
@@ -667,6 +730,7 @@ void loop() {
       //modem.enable9603Npower(true); // Enable power for the 9603N
       //consoleSerial.println("modem turned on");
       //modem.begin(); // Wake up the modem
+      MT_buffer_size = sizeof(MT_buffer); // always reset this before receive; message size is returned in this variable
       status = modem.sendReceiveSBDBinary((uint8_t *)&beacon, sizeof(beacon), MT_buffer, MT_buffer_size); // TX/RX a message in binary
       #ifdef DEBUG
       if (MT_buffer_size>0) {
@@ -741,7 +805,7 @@ void loop() {
   // update update time so we can detect overflow on next loop iteration
   last_update_millis = this_update_millis;
     
-  ISBDCallback();  // if no message to send/receive then go ahead with loop
+  //ISBDCallback();  // if no message to send/receive then go ahead with loop
 }
 
 bool ISBDCallback() {
@@ -794,6 +858,9 @@ bool ISBDCallback() {
       LED_period = 100;  // make LED complain about bad pressure
       LED_duration = 50;
     }
+#endif
+#ifdef MPL3115A2
+    pressure_sample = baro.getPressure()*100;
 #endif
 
     sample[n] = pressure_sample;
@@ -863,7 +930,8 @@ bool ISBDCallback() {
     consoleSerial.print(F(","));
     consoleSerial.print(active_state);
     consoleSerial.print(F(","));
-    int c = gps.time.minute();
+    //consoleSerial.print(digitalRead(RING_PIN)?"IDLE,":"RING,");
+    /*int c = gps.time.minute();
     if (c < 10) {
       consoleSerial.print(F("0")); // leading zero
     }
@@ -874,7 +942,7 @@ bool ISBDCallback() {
       consoleSerial.print(F("0")); // leading zero
     }
     consoleSerial.print(c);
-    consoleSerial.print(F(","));
+    consoleSerial.print(F(",")); */
     consoleSerial.print(current_pressure);
     consoleSerial.print(F(","));
     consoleSerial.print(pressure_sample);
@@ -885,13 +953,21 @@ bool ISBDCallback() {
     consoleSerial.print(F(","));
     consoleSerial.print(gps.location.lng(),6);
     consoleSerial.print(F(","));
+    consoleSerial.print(gps.altitude.meters());
+    consoleSerial.print(F(","));
+    consoleSerial.print((float)gps.course.value()/100.0);
+    consoleSerial.print(F(","));
+    consoleSerial.print((float)gps.speed.value()/100.0);
+    consoleSerial.print(F(","));
     if (gps.location.isValid()) {
-      consoleSerial.println(TinyGPSPlus::distanceBetween(gps.location.lat(),
+      consoleSerial.print(TinyGPSPlus::distanceBetween(gps.location.lat(),
           gps.location.lng(), launch_lat, launch_lon));
     //  consoleSerial.println(haversine(launch_lat, launch_lon, nmea.getLatitude(), nmea.getLongitude()));
     } else {
-      consoleSerial.println(F("NaN"));  // no GPS lock, so no accurate distance available
+      consoleSerial.print(F("NaN"));  // no GPS lock, so no accurate distance available
     }
+    consoleSerial.print(F(","));
+    consoleSerial.println(analogRead(BATT_SENSE));
   }
   
   // update update time so we can detect overflow on next loop iteration
@@ -946,20 +1022,20 @@ bool ISBDCallback() {
         LED_duration = 50;
         active_state = LETDOWN_ACTIVE;
         #ifdef DEBUG
-          consoleSerial.print(F("LETDOWN ON: "));
+          consoleSerial.print(F("MOTOR ON: "));
           consoleSerial.println(millis()/(uint32_t)1000);
         #endif
       }
       break;
 
     case LETDOWN_ACTIVE:  // letting down, 10Hz flashes
-      if ( (millis() - launch_time) > (config.letdown_delay + config.letdown_duration) ) {
+      if ( (millis() - launch_time) > (config.letdown_delay + config.cut_duration) ) {
         digitalWrite(MOTOR, LOW);
         LED_period = 2000;
         LED_duration = 50;
         active_state = FLIGHT;
         #ifdef DEBUG
-          consoleSerial.print(F("LETDOWN STOPPED: "));
+          consoleSerial.print(F("MOTOR OFF: "));
           consoleSerial.println(millis()/(uint32_t)1000);
         #endif
       }
@@ -1070,12 +1146,12 @@ void ISBDDiagsCallback(IridiumSBD *device, char c)
 void cmd_ping(SerialCommands& sender, Args& args);
 void cmd_show(SerialCommands& sender, Args& args);
 void cmd_cut(SerialCommands& sender, Args& args);
-void cmd_letdown(SerialCommands& sender, Args& args);
+void cmd_MOTOR(SerialCommands& sender, Args& args);
 void cmd_update(SerialCommands& sender, Args& args);
 void cmd_set(SerialCommands& sender, Args& args);
 void cmd_set_unit_id(SerialCommands& sender, Args& args);
-void cmd_set_letdown_delay(SerialCommands& sender, Args& args);
-void cmd_set_letdown_duration(SerialCommands& sender, Args& args);
+void cmd_set_MOTOR_delay(SerialCommands& sender, Args& args);
+void cmd_set_cut_duration(SerialCommands& sender, Args& args);
 void cmd_set_max_flight_duration(SerialCommands& sender, Args& args);
 void cmd_set_cut_pressure(SerialCommands& sender, Args& args);
 void cmd_set_cut_duration(SerialCommands& sender, Args& args);
@@ -1089,8 +1165,8 @@ void cmd_set_max_longitude(SerialCommands& sender, Args& args);
 
 Command subCommands [] {
   COMMAND(cmd_set_unit_id, "unit_id", ArgType::Int, nullptr, "unique address"),
-  COMMAND(cmd_set_letdown_delay, "letdown_delay", ArgType::Int, nullptr, "activation after launch, secs"),
-  COMMAND(cmd_set_letdown_duration, "letdown_duration", ArgType::Int, nullptr, "time to lower, secs"),
+  COMMAND(cmd_set_MOTOR_delay, "MOTOR_delay", ArgType::Int, nullptr, "activation after launch, secs"),
+  COMMAND(cmd_set_cut_duration, "cut_duration", ArgType::Int, nullptr, "time to lower, secs"),
   COMMAND(cmd_set_max_flight_duration, "max_flight_duration", ArgType::Int, nullptr, "elapsed time to terminate flight, secs"),
   COMMAND(cmd_set_cut_pressure, "cut_pressure", ArgType::Int, nullptr, "pressure to terminate flight, mbar"),
   COMMAND(cmd_set_cut_duration, "cut_duration", ArgType::Int, nullptr, "how long to activate cutter, secs"),
@@ -1108,7 +1184,7 @@ Command commands[] {
   COMMAND(cmd_ping, "ping", ArgType::String, nullptr, "link test"),
   COMMAND(cmd_show, "show", nullptr, "show params"),
   COMMAND(cmd_set, "set", subCommands, "set params"),
-  COMMAND(cmd_letdown, "letdown", ArgType::Int, nullptr, "actuate letdown <int> seconds"),
+  COMMAND(cmd_MOTOR, "MOTOR", ArgType::Int, nullptr, "actuate MOTOR <int> seconds"),
   COMMAND(cmd_cut, "cut", ArgType::Int, nullptr, "actuate cutter unit_id <int>"),
   COMMAND(cmd_update, "update", ArgType::Int, nullptr, "temp change update rate"),
 };
@@ -1140,16 +1216,16 @@ void cmd_cut(SerialCommands& sender, Args& args) {
 // this command is only for ground testing, as puts you in flight mode
 // could be used if the pressure sensor goes nuts and the letdown doesn't trip
 void cmd_letdown(SerialCommands& sender, Args& args) {
-  sender.getSerial().println(F("letdown activating in 3 secs"));
-  active_state = LETDOWN_INIT;
+  sender.getSerial().println(F("MOTOR activating in 3 secs"));
+  active_state = MOTOR_INIT;
   launch_time = millis();
   /*if (nmea.isValid()) {
     launch_lat = nmea.getLatitude();  // millionths of degrees
     launch_lon = nmea.getLongitude(); // millionths of degrees
     nmea.getAltitude(launch_alt);  // altitude MSL
   }*/
-/*  letdown_duration = args[0].getInt();
-  letdown_delay = 3;
+/*  cut_duration = args[0].getInt();
+  MOTOR_delay = 3;
   LED_period = 500;  // long slow blink
   LED_duration = 450;
   digitalWrite(CUTTER, LOW);  // turn off cutter just in case
@@ -1158,10 +1234,10 @@ void cmd_letdown(SerialCommands& sender, Args& args) {
 void cmd_show(SerialCommands& sender, Args& args) {
   sender.getSerial().print(F("unit_id: "));
   sender.getSerial().println(unit_id);
-  sender.getSerial().print(F("letdown_delay: "));
-  sender.getSerial().println(letdown_delay);
-  sender.getSerial().print(F("letdown_duration: "));
-  sender.getSerial().println(letdown_duration);
+  sender.getSerial().print(F("MOTOR_delay: "));
+  sender.getSerial().println(MOTOR_delay);
+  sender.getSerial().print(F("cut_duration: "));
+  sender.getSerial().println(cut_duration);
   sender.getSerial().print(F("max_flight_duration: "));
   sender.getSerial().println(max_flight_duration);
   sender.getSerial().print(F("cut_pressure: "));
@@ -1199,19 +1275,19 @@ void cmd_set_unit_id(SerialCommands& sender, Args& args) {
   sender.getSerial().println(number);
 }
 
-void cmd_set_letdown_delay(SerialCommands& sender, Args& args) {
+void cmd_set_MOTOR_delay(SerialCommands& sender, Args& args) {
   unsigned int number = args[0].getInt();
   EEPROM.put(1 * sizeof(unsigned int), (unsigned int)number); // save number
-  letdown_delay = number;  // set in ram as well
-  sender.getSerial().print(F("letdown_delay="));
+  MOTOR_delay = number;  // set in ram as well
+  sender.getSerial().print(F("MOTOR_delay="));
   sender.getSerial().println(number);
 }
 
-void cmd_set_letdown_duration(SerialCommands& sender, Args& args) {
+void cmd_set_cut_duration(SerialCommands& sender, Args& args) {
   auto number = args[0].getInt();
   EEPROM.put(2 * sizeof(unsigned int), (unsigned int)number); // save number
-  letdown_duration = number;  // set in ram as well
-  sender.getSerial().print(F("letdown_duration="));
+  cut_duration = number;  // set in ram as well
+  sender.getSerial().print(F("="));
   sender.getSerial().println(number);
 }
 
