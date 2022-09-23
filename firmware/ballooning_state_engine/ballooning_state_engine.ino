@@ -103,7 +103,7 @@ Adafruit_MPL3115A2 baro;
 #define N (33)
 
 // make this interval between pressure samples; filter total time is N*T
-#define T (333)
+#define T (800)
 
 // filter delay in milliseconds; we trigger before filter gets filled up with rising values
 //  so estimate at half of the filter total time
@@ -197,7 +197,7 @@ uint16_t LED_duration = 50;  // duration of LED blink
 const uint16_t GPS_LED_period = 1000;  // interval to blink GPS locked LED
 const uint16_t GPS_LED_duration = 100;  // duration to blink GPS locked LED
 
-uint32_t launch_time = 0;  // so we can time letdown and flight time
+static uint32_t launch_time = 0;  // so we can time letdown and flight time
 float launch_lat;
 float launch_lon;
 float launch_alt;
@@ -205,6 +205,7 @@ float launch_alt;
 uint16_t batt_voltage;
 uint32_t current_pressure;
 uint32_t pressure_sample;
+float temperature_sample;
 int32_t rise_rate;
 
 uint8_t MT_buffer[96];  // buffer for mobile terminated messages (to rockblock)
@@ -243,15 +244,20 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
     // CUT command:  CUT (3 bytes)
     //if ((buffer_size == 5) && !strncmp(buffer, "CUT", 3) && !strncmp(buffer+3, config.unit_id, 2)) {
     if ((buffer_size == 3) && !strncmp(buffer, "CUT", 3) ) {
-       #ifdef DEBUG
-      consoleSerial.println(F("*** CUT command"));
+      #ifdef DEBUG
+      consoleSerial.println(F("*** CUT cmd"));
       #endif
       // do cut stuff here
-      timer = millis();
-      while ( (millis()-timer) < config.cut_duration) {
-        digitalWrite(CUTTER, HIGH);
+      if (active_state == SETUP) {
+        timer = millis();
+        while ( (millis()-timer) < config.cut_duration) {
+          digitalWrite(LED_BUILTIN, LOW);
+          digitalWrite(CUTTER, HIGH);
+        }
+        digitalWrite(CUTTER, LOW);
+      } else {
+        active_state = CUT_INIT;
       }
-      digitalWrite(CUTTER, LOW);
       return(1);  // good command status
     }
 
@@ -260,13 +266,18 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
     else if ((buffer_size == 3) && !strncmp(buffer, "LET", 3)) {
       // do letdown stuff here  
       #ifdef DEBUG
-      consoleSerial.println(F("*** LET command"));
+      consoleSerial.println(F("*** LET cmd"));
       #endif
-      timer = millis();
-      while ( (millis()-timer) < config.cut_duration) {
-        digitalWrite(MOTOR, HIGH);
+      if (active_state == SETUP) {
+        timer = millis();
+        while ( (millis()-timer) < config.cut_duration) {
+          digitalWrite(LED_BUILTIN, LOW);
+          digitalWrite(MOTOR, HIGH);
+        }
+        digitalWrite(MOTOR, LOW);
+      } else {
+        active_state = LETDOWN_INIT;
       }
-      digitalWrite(MOTOR, LOW);
       return(1);
     }
     
@@ -579,6 +590,7 @@ void setup() {
     error_flash(3,3);
     resetFunc();  // go back to setup()
   }
+  baro.setMode(MPL3115A2_BAROMETER);
 #endif
 
   #ifdef DEBUG
@@ -636,9 +648,9 @@ void setup() {
   
     base_pressure += sample[i];  // base_pressure is only used for arduino simple serial plotter
 
-    delay((T-8)/4);  // sample at about 2x the same rate as normal
+    //delay((T-8)/4);  // sample at about 2x the same rate as normal
     digitalWrite(LED_BUILTIN, LOW);
-    delay((T-8)/4);
+    //delay((T-8)/4);
     #ifdef DEBUG
     consoleSerial.print(F("."));
     #endif
@@ -708,7 +720,7 @@ void loop() {
     beacon.course = (int16_t)(gps.course.value());  // 100ths of degree
     beacon.speed = (int16_t)(gps.speed.value()); // 100ths of knot
     beacon.pressure = current_pressure;
-    beacon.temperature = 0*10; //current_temp*10;
+    beacon.temperature = (int16_t)(temperature_sample*10); //current_temp*10;
     beacon.humidity = 0*10; //current_humidity*10;
     beacon.batt_voltage = analogRead(BATT_SENSE);
     
@@ -861,6 +873,7 @@ bool ISBDCallback() {
 #endif
 #ifdef MPL3115A2
     pressure_sample = baro.getPressure()*100;
+    temperature_sample = baro.getTemperature();  // temp in deg C
 #endif
 
     sample[n] = pressure_sample;
@@ -949,6 +962,8 @@ bool ISBDCallback() {
     consoleSerial.print(F(","));
     consoleSerial.print(rise_rate);
     consoleSerial.print(F(","));
+    consoleSerial.print(temperature_sample);
+    consoleSerial.print(F(","));
     consoleSerial.print(gps.location.lat(),6);
     consoleSerial.print(F(","));
     consoleSerial.print(gps.location.lng(),6);
@@ -1029,7 +1044,7 @@ bool ISBDCallback() {
       break;
 
     case LETDOWN_ACTIVE:  // letting down, 10Hz flashes
-      if ( (millis() - launch_time) > (config.letdown_delay + config.cut_duration) ) {
+      if ( (millis() - launch_time) > (config.letdown_delay + config.letdown_duration) ) {
         digitalWrite(MOTOR, LOW);
         LED_period = 2000;
         LED_duration = 50;
@@ -1054,31 +1069,32 @@ bool ISBDCallback() {
         break;
       }
       // check geofence here
-      /*if (nmea.isValid()) {
+      if (gps.location.isValid()) {
         // compute distance and compare to max distance downrange
-        if ( config.max_distance && (haversine(launch_lat, launch_lon, nmea.getLatitude(), nmea.getLongitude()) > max_distance)) {
+        if ( config.max_distance && (TinyGPSPlus::distanceBetween(gps.location.lat(),
+          gps.location.lng(), launch_lat, launch_lon) > config.max_distance)) {
           active_state = CUT_INIT;
           break;
         }
-        if ( config.max_latitude!=0 && (nmea.getLatitude() > config.max_latitude)) {
+        if ( config.max_latitude!=0 && ( ((uint32_t)(gps.location.lat()*(uint32_t)1000000)) > config.max_latitude)) {
           active_state = CUT_INIT;
           break; 
         }
-        if ( config.min_latitude!=0 && (nmea.getLatitude() < config.min_latitude)) {
+        if ( config.min_latitude!=0 && ( ((uint32_t)(gps.location.lat()*(uint32_t)1000000)) < config.min_latitude)) {
           active_state = CUT_INIT;
           break; 
         }
-        if ( config.max_longitude!=0 && (nmea.getLongitude() > config.max_longitude)) {
+        if ( config.max_longitude!=0 && ( ((uint32_t)(gps.location.lng()*(uint32_t)1000000)) > config.max_longitude)) {
           active_state = CUT_INIT;
           break; 
         }
-        if ( config.max_longitude!=0 && (nmea.getLongitude() < config.min_longitude)) {
+        if ( config.max_longitude!=0 && ( ((uint32_t)(gps.location.lng()*(uint32_t)1000000)) < config.min_longitude)) {
           active_state = CUT_INIT;
           break; 
         }
         
         // compare lat/lon to lat/lon min and max
-      }*/
+      }
       break;
 
     case CUT_INIT:
