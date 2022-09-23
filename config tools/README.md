@@ -12,4 +12,4 @@ Connect cable and turn on device now
 .
 
 
-You should see an "OK" response after the CFG string is send.
+You should see an "OK" response after the CFG string is sent.
