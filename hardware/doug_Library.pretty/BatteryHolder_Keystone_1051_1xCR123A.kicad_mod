@@ -57,4 +57,9 @@
   (pad "" np_thru_hole circle (at 0 -8.1 90) (size 2.64 2.64) (drill 2.64) (layers F&B.Cu *.Mask) (tstamp 74929742-2b7e-4d27-944d-db6ffbd0bd5b))
   (pad "1" thru_hole rect (at 0 0 180) (size 2 2) (drill 1.02) (layers *.Cu *.Mask) (tstamp f72a3b81-7383-4cc4-9731-7c28d5746a7d))
   (pad "2" thru_hole circle (at 37.8 0 180) (size 2 2) (drill 1.02) (layers *.Cu *.Mask) (tstamp 2d06a649-2103-4eae-9ada-ce25047abef7))
+  (model "C:/Users/micro/Downloads/keystone-PN1129.STEP"
+    (opacity 0.2000)    (offset (xyz 1.7 36.7 -9.5))
+    (scale (xyz 1 1 1))
+    (rotate (xyz -90 0 0))
+  )
 )
