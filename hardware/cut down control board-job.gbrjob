@@ -5,13 +5,13 @@
       "Application": "Pcbnew",
       "Version": "(6.0.7)"
     },
-    "CreationDate": "2022-10-11T16:54:19-05:00"
+    "CreationDate": "2022-10-12T18:39:58-05:00"
   },
   "GeneralSpecs": {
     "ProjectId": {
       "Name": "cut down control board",
       "GUID": "63757420-646f-4776-9e20-636f6e74726f",
-      "Revision": "rev?"
+      "Revision": "1"
     },
     "Size": {
       "X": 152.5228,
@@ -24,8 +24,8 @@
   "DesignRules": [
     {
       "Layers": "Outer",
-      "PadToPad": 0.2,
-      "PadToTrack": 0.2,
+      "PadToPad": 0.0,
+      "PadToTrack": 0.0,
       "TrackToTrack": 0.2,
       "MinLineWidth": 0.25,
       "TrackToRegion": 0.508,
