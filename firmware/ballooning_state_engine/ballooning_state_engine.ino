@@ -88,10 +88,10 @@ Adafruit_MPL3115A2 baro;
 //#define DEBUG_FILTER
 
 // Motor port
-#define MOTOR (2)
+#define MOTOR (5)
 
 // hot-wire cutter port
-#define CUTTER (3)
+#define CUTTER (4)
 
 // GPS LED port
 #define LED_GPS (12)
@@ -153,10 +153,11 @@ static long max_longitude;
 
 // lines on rockblock labelled backwards; TX on RB is wired to TX on 328P
 #define satSerial Serial
-#define RING_PIN (8)
-SoftwareSerial gpsSerial (10,9); // RX, TX
-SoftwareSerial consoleSerial (7,6); // RX, TX 
-IridiumSBD modem(satSerial, -1, RING_PIN);  // Declare the IridiumSBD object
+#define RING_PIN (2)
+#define SLEEP_PIN (3)
+SoftwareSerial gpsSerial (7,6); // RX, TX
+SoftwareSerial consoleSerial (10,9); // RX, TX 
+IridiumSBD modem(satSerial, SLEEP_PIN, RING_PIN);  // Declare the IridiumSBD object
 TinyGPSPlus gps;  // Declare the TinyGPSPlus object
 
 // vector of filter coefficients
@@ -343,6 +344,10 @@ void setup() {
 
   // iridium modem ring signal
   pinMode(RING_PIN, INPUT);
+
+  // iridium modem sleep signal; +5V = NOT ASLEEP
+  pinMode(SLEEP_PIN, OUTPUT);
+  digitalWrite(SLEEP_PIN, LOW);
 
 #ifdef MPR
   // pressure sensor reset
