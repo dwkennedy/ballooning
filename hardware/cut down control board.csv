@@ -1,35 +1,100 @@
-"Id";"Designator";"Package";"Quantity";"Designation";"Supplier and ref";
-1;"R3,R2,R1";"R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal";3;"10K";;;
-2;"BT2,BT1,BT3";"BatteryHolder_Keystone_1051_1xCR123A";3;"Battery_Cell";;;
-3;"R8,R9";"R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal";2;"1K";;;
-4;"J12";"PinHeader_2x03_P2.54mm_Vertical";1;"Analog In";;;
-5;",,,,,";"";6;"";;;
-6;"J13";"JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical";1;"EXT BATT";;;
-7;"Q1,Q2";"TO-220-3_Horizontal_TabDown";2;"FQP30N06L";;;
-8;"D2";"LED_D3.0mm";1;"GRN";;;
-9;"J10";"Molex_PicoBlade_53047-1010_1x10_P1.25mm_Vertical";1;"SAT(10 picoblade)";;;
-10;"Y1";"Crystal_HC49-4H_Vertical";1;"16MHz";;;
-11;"R4";"R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal";1;"100K";;;
-12;"U6";"TO-220-3_Horizontal_TabDown";1;"L7805";;;
-13;"C11";"C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal";1;"1uF";;;
-14;"R7,R6";"R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal";2;"330";;;
-15;"C8,C9";"C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal";2;"0.1uF";;;
-16;"J5";"PinHeader_1x06_P2.54mm_Vertical";1;"SAT(PIN HDR)";;;
-17;"J11";"SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm";1;"VGPS SELECT";;;
-18;"C4,C10,C5";"C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal";3;"100nF";;;
-19;"J2";"JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical";1;"MOTOR";;;
-20;"C7,C6";"C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal";2;"0.33uF";;;
-21;"J3";"PinHeader_2x03_P2.54mm_Vertical";1;"ISP";;;
-22;"J14";"JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical";1;"D8 I/O";;;
-23;"R5";"R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal";1;"33K";;;
-24;"U2";"NXP_LGA-8_3x5mm_P1.25mm_H1.1mm";1;"MPL3115A2";;;
-25;"D1";"LED_D3.0mm";1;"RED";;;
-26;"U1";"DIP-28_W7.62mm";1;"ATmega328-P";;;
-27;"C12";"CP_Radial_D5.0mm_P2.00mm";1;"10uF";;;
-28;"J1";"JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical";1;"CUTTER";;;
-29;"J7";"PinHeader_1x06_P2.54mm_Vertical";1;"DBG TTL";;;
-30;"J6";"PinHeader_1x04_P2.54mm_Vertical";1;"GPS(PIN HDR)";;;
-31;"J9";"JST_SH_BM06B-SRSS-TB_1x06-1MP_P1.00mm_Vertical";1;"GPS(JST SH)";;;
-32;"SW1";"JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical";1;"SW_SPST";;;
-33;"C2,C1";"C_Disc_D4.7mm_W2.5mm_P5.00mm";2;"22pF";;;
-34;"U5";"TO-92_Inline";1;"L78L33_TO92";;;
+"Source:","C:\Users\micro\Documents\ballooning\hardware\cut down control board.kicad_sch"
+"Date:","10/24/2022 11:21:13 AM"
+"Tool:","Eeschema (6.0.7)"
+"Generator:","C:\Program Files\KiCad\6.0\bin\scripting\plugins/bom_csv_grouped_by_value.py"
+"Component Count:","48"
+
+"Individual Components:"
+
+"Item","Qty","Reference(s)","Value","LibPart","Footprint","Datasheet"
+"","","BT1","Battery_Cell","Device:Battery_Cell","doug_Library:BatteryHolder_Keystone_1051_1xCR123A","~"
+"","","BT2","Battery_Cell","Device:Battery_Cell","doug_Library:BatteryHolder_Keystone_1051_1xCR123A","~"
+"","","BT3","Battery_Cell","Device:Battery_Cell","doug_Library:BatteryHolder_Keystone_1051_1xCR123A","~"
+"","","C1","22pF","Device:C","Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm","https://www.farnell.com/datasheets/2873573.pdf"
+"","","C2","22pF","Device:C","Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm","https://www.farnell.com/datasheets/2873573.pdf"
+"","","C4","100nF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","A104M15X7RF5TAA"
+"","","C5","100nF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","~"
+"","","C6","0.33uF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","https://datasheets.kyocera-avx.com/spingrd.pdf"
+"","","C7","0.33uF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","https://datasheets.kyocera-avx.com/spingrd.pdf"
+"","","C8","0.1uF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","~"
+"","","C9","0.1uF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","~"
+"","","C10","100nF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","~"
+"","","C11","1uF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","https://www.digikey.com/en/products/detail/kemet/C410C105K3R5TA/12701220"
+"","","C12","10uF","Device:C_Polarized_Small_US","Capacitor_THT:CP_Radial_D5.0mm_P2.00mm","https://www.rubycon.co.jp/wp-content/uploads/catalog-aluminum/YXF.pdf"
+"","","D1","RED","Device:LED","LED_THT:LED_D3.0mm","~"
+"","","D2","GRN","Device:LED","LED_THT:LED_D3.0mm","~"
+"","","J1","CUTTER","Connector_Generic:Conn_01x02","Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical","~"
+"","","J2","MOTOR","Connector_Generic:Conn_01x02","Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical","~"
+"","","J3","ISP","Connector:AVR-ISP-6","Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical"," ~"
+"","","J5","SAT(PIN HDR)","Connector:Conn_01x06_Female","Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical","~"
+"","","J6","GPS(PIN HDR)","Connector:Conn_01x04_Female","Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical","~"
+"","","J7","DBG TTL","Connector:Conn_01x06_Male","Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical","~"
+"","","J9","GPS(JST SH)","Connector_Generic:Conn_01x06","Connector_JST:JST_SH_BM06B-SRSS-TB_1x06-1MP_P1.00mm_Vertical","~"
+"","","J10","SAT(10 picoblade)","Connector:Conn_01x10_Female","Connector_Molex:Molex_PicoBlade_53047-1010_1x10_P1.25mm_Vertical","~"
+"","","J11","VGPS SELECT","Jumper:SolderJumper_3_Bridged12","Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm","~"
+"","","J12","Analog In","Connector_Generic:Conn_02x03_Odd_Even","Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical","~"
+"","","J13","EXT BATT","Connector_Generic:Conn_01x02","Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical","~"
+"","","J14","D8 I/O","Connector_Generic:Conn_01x02","Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical","~"
+"","","M1","Motor_DC","Motor:Motor_DC","","~"
+"","","Q1","FQP30N06L","Doug_symbol_library:FQP30N06L","Package_TO_SOT_THT:TO-220-3_Horizontal_TabDown",""
+"","","Q2","FQP30N06L","Doug_symbol_library:FQP30N06L","Package_TO_SOT_THT:TO-220-3_Horizontal_TabDown",""
+"","","R1","10K","Device:R_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","https://www.farnell.com/datasheets/2861447.pdf"
+"","","R2","10K","Device:R_Small_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"","","R3","10K","Device:R_Small_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"","","R4","100K","Device:R_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"","","R5","33K","Device:R_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","Resistor_THT:R_Axial_DIN0309_L9.0mm_D3.2mm_P12.70mm_Horizontal"
+"","","R6","130","Device:R_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"","","R7","130","Device:R_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"","","R8","1K","Device:R_Small_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"","","R9","1K","Device:R_Small_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"","","SW1","SW_SPST","Switch:SW_SPST","Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical","~"
+"","","U1","ATmega328-P","MCU_Microchip_ATmega:ATmega328-P","Package_DIP:DIP-28_W7.62mm","http://ww1.microchip.com/downloads/en/DeviceDoc/ATmega328_P%20AVR%20MCU%20with%20picoPower%20Technology%20Data%20Sheet%2040001984A.pdf"
+"","","U2","MPL3115A2","Sensor_Pressure:MPL3115A2","Package_LGA:NXP_LGA-8_3x5mm_P1.25mm_H1.1mm","https://www.nxp.com/docs/en/data-sheet/MPL3115A2.pdf"
+"","","U3","GPS_RX_MODULE","Doug_symbol_library:GPS_RXVR_TTL","",""
+"","","U4","ROCKBLOCK_9603","Doug_symbol_library:ROCKBLOCK_9603","",""
+"","","U5","L78L33_TO92","Regulator_Linear:L78L33_TO92","Package_TO_SOT_THT:TO-92_Inline","http://www.st.com/content/ccc/resource/technical/document/datasheet/15/55/e5/aa/23/5b/43/fd/CD00000446.pdf/files/CD00000446.pdf/jcr:content/translations/en.CD00000446.pdf"
+"","","U6","L7805","Regulator_Linear:L7805","Package_TO_SOT_THT:TO-220-3_Horizontal_TabDown","http://www.st.com/content/ccc/resource/technical/document/datasheet/41/4f/b3/b0/12/d4/47/88/CD00000444.pdf/files/CD00000444.pdf/jcr:content/translations/en.CD00000444.pdf"
+"","","Y1","16MHz","Device:Crystal","Crystal:Crystal_HC49-4H_Vertical","https://www.mouser.com/datasheet/2/77/HC_49_U_S_E-1131675.pdf"
+
+
+
+"Collated Components:"
+
+"Item","Qty","Reference(s)","Value","LibPart","Footprint","Datasheet"
+"1","3","BT1, BT2, BT3","Battery_Cell","Device:Battery_Cell","doug_Library:BatteryHolder_Keystone_1051_1xCR123A","~"
+"2","2","C1, C2","22pF","Device:C","Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm","https://www.farnell.com/datasheets/2873573.pdf"
+"3","3","C4, C5, C10","100nF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","A104M15X7RF5TAA"
+"4","2","C6, C7","0.33uF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","https://datasheets.kyocera-avx.com/spingrd.pdf"
+"5","2","C8, C9","0.1uF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","~"
+"6","1","C11","1uF","Device:C_Small","Capacitor_THT:C_Axial_L5.1mm_D3.1mm_P7.50mm_Horizontal","https://www.digikey.com/en/products/detail/kemet/C410C105K3R5TA/12701220"
+"7","1","C12","10uF","Device:C_Polarized_Small_US","Capacitor_THT:CP_Radial_D5.0mm_P2.00mm","https://www.rubycon.co.jp/wp-content/uploads/catalog-aluminum/YXF.pdf"
+"8","1","D1","RED","Device:LED","LED_THT:LED_D3.0mm","~"
+"9","1","D2","GRN","Device:LED","LED_THT:LED_D3.0mm","~"
+"10","1","J1","CUTTER","Connector_Generic:Conn_01x02","Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical","~"
+"11","1","J2","MOTOR","Connector_Generic:Conn_01x02","Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical","~"
+"12","1","J3","ISP","Connector:AVR-ISP-6","Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical"," ~"
+"13","1","J5","SAT(PIN HDR)","Connector:Conn_01x06_Female","Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical","~"
+"14","1","J6","GPS(PIN HDR)","Connector:Conn_01x04_Female","Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical","~"
+"15","1","J7","DBG TTL","Connector:Conn_01x06_Male","Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical","~"
+"16","1","J9","GPS(JST SH)","Connector_Generic:Conn_01x06","Connector_JST:JST_SH_BM06B-SRSS-TB_1x06-1MP_P1.00mm_Vertical","~"
+"17","1","J10","SAT(10 picoblade)","Connector:Conn_01x10_Female","Connector_Molex:Molex_PicoBlade_53047-1010_1x10_P1.25mm_Vertical","~"
+"18","1","J11","VGPS SELECT","Jumper:SolderJumper_3_Bridged12","Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm","~"
+"19","1","J12","Analog In","Connector_Generic:Conn_02x03_Odd_Even","Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical","~"
+"20","1","J13","EXT BATT","Connector_Generic:Conn_01x02","Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical","~"
+"21","1","J14","D8 I/O","Connector_Generic:Conn_01x02","Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical","~"
+"22","1","M1","Motor_DC","Motor:Motor_DC","","~"
+"23","2","Q1, Q2","FQP30N06L","Doug_symbol_library:FQP30N06L","Package_TO_SOT_THT:TO-220-3_Horizontal_TabDown",""
+"24","1","R1","10K","Device:R_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","https://www.farnell.com/datasheets/2861447.pdf"
+"25","2","R2, R3","10K","Device:R_Small_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"26","1","R4","100K","Device:R_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"27","1","R5","33K","Device:R_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","Resistor_THT:R_Axial_DIN0309_L9.0mm_D3.2mm_P12.70mm_Horizontal"
+"28","2","R6, R7","130","Device:R_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"29","2","R8, R9","1K","Device:R_Small_US","Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal","~"
+"30","1","SW1","SW_SPST","Switch:SW_SPST","Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical","~"
+"31","1","U1","ATmega328-P","MCU_Microchip_ATmega:ATmega328-P","Package_DIP:DIP-28_W7.62mm","http://ww1.microchip.com/downloads/en/DeviceDoc/ATmega328_P%20AVR%20MCU%20with%20picoPower%20Technology%20Data%20Sheet%2040001984A.pdf"
+"32","1","U2","MPL3115A2","Sensor_Pressure:MPL3115A2","Package_LGA:NXP_LGA-8_3x5mm_P1.25mm_H1.1mm","https://www.nxp.com/docs/en/data-sheet/MPL3115A2.pdf"
+"33","1","U3","GPS_RX_MODULE","Doug_symbol_library:GPS_RXVR_TTL","",""
+"34","1","U4","ROCKBLOCK_9603","Doug_symbol_library:ROCKBLOCK_9603","",""
+"35","1","U5","L78L33_TO92","Regulator_Linear:L78L33_TO92","Package_TO_SOT_THT:TO-92_Inline","http://www.st.com/content/ccc/resource/technical/document/datasheet/15/55/e5/aa/23/5b/43/fd/CD00000446.pdf/files/CD00000446.pdf/jcr:content/translations/en.CD00000446.pdf"
+"36","1","U6","L7805","Regulator_Linear:L7805","Package_TO_SOT_THT:TO-220-3_Horizontal_TabDown","http://www.st.com/content/ccc/resource/technical/document/datasheet/41/4f/b3/b0/12/d4/47/88/CD00000444.pdf/files/CD00000444.pdf/jcr:content/translations/en.CD00000444.pdf"
+"37","1","Y1","16MHz","Device:Crystal","Crystal:Crystal_HC49-4H_Vertical","https://www.mouser.com/datasheet/2/77/HC_49_U_S_E-1131675.pdf"
