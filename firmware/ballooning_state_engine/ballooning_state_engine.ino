@@ -347,7 +347,7 @@ void setup() {
 
   // iridium modem sleep signal; +5V = NOT ASLEEP
   pinMode(SLEEP_PIN, OUTPUT);
-  digitalWrite(SLEEP_PIN, LOW);
+  digitalWrite(SLEEP_PIN, HIGH);
 
 #ifdef MPR
   // pressure sensor reset
