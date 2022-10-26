@@ -15,7 +15,7 @@ def print_hi(name):
 def build_config_struct():
 
     unit_id = 0x0101
-    letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
+    letdown_delay = -30  # positive: seconds after launch detect: negative, seconds after power on
     letdown_duration = 5  # seconds
     max_flight_duration = 60  # SECONDS, 0=ignore
     cut_pressure = 0  # Pascals, 0=ignore
