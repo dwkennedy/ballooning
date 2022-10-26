@@ -246,13 +246,15 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
     //if ((buffer_size == 5) && !strncmp(buffer, "CUT", 3) && !strncmp(buffer+3, config.unit_id, 2)) {
     if ((buffer_size == 3) && !strncmp(buffer, "CUT", 3) ) {
       #ifdef DEBUG
-      consoleSerial.println(F("*** CUT cmd"));
+      consoleSerial.print(F("*** CUT "));
+      consoleSerial.println(config.cut_duration);
       #endif
       // do cut stuff here
       if (active_state == SETUP) {
         timer = millis();
         while ( (millis()-timer) < config.cut_duration) {
           digitalWrite(LED_BUILTIN, LOW);
+          digitalWrite(LED_GPS, LOW);
           digitalWrite(CUTTER, HIGH);
         }
         digitalWrite(CUTTER, LOW);
@@ -267,12 +269,14 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
     else if ((buffer_size == 3) && !strncmp(buffer, "LET", 3)) {
       // do letdown stuff here  
       #ifdef DEBUG
-      consoleSerial.println(F("*** LET cmd"));
+      consoleSerial.print(F("*** LET "));
+      consoleSerial.println(config.letdown_duration);
       #endif
       if (active_state == SETUP) {
         timer = millis();
-        while ( (millis()-timer) < config.cut_duration) {
+        while ( (millis()-timer) < config.letdown_duration) {
           digitalWrite(LED_BUILTIN, LOW);
+          digitalWrite(LED_GPS, LOW);
           digitalWrite(MOTOR, HIGH);
         }
         digitalWrite(MOTOR, LOW);
@@ -337,10 +341,10 @@ void setup() {
 
   // set up GPS LED
   pinMode(LED_GPS, OUTPUT);
-  digitalWrite(LED_GPS, LOW);
+  digitalWrite(LED_GPS, HIGH);
   // set up output indicator LED
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(LED_BUILTIN, HIGH);
 
   // iridium modem ring signal
   pinMode(RING_PIN, INPUT);
@@ -357,20 +361,6 @@ void setup() {
 
   active_state = SETUP;  // we in setup mode now
   
-  // avoid double setup
-  delay(5000);
-  
-  // blink all led on on boot for 1 sec (lamp test)
-  digitalWrite(LED_BUILTIN, HIGH);
-  digitalWrite(LED_GPS, HIGH);
-  delay(1000);
-  digitalWrite(LED_BUILTIN, LOW);
-  digitalWrite(LED_GPS, LOW);
-  #ifdef MPR
-  digitalWrite(RESET_PIN, HIGH);  // take pressure sensor out of reset
-  #endif
-  //delay(1000);
-  
   // set serial port baud rates
   satSerial.begin(19200);  // hardware serial is connected to satellite radio
   consoleSerial.begin(19200);  // software serial to debugging console
@@ -379,6 +369,33 @@ void setup() {
   #ifdef DEBUG
     consoleSerial.println(F("\r\n*** Start setup()"));
   #endif
+    
+  // avoid double setup and wait for LED test
+  delay(5000);
+  
+  // turn off all LED, on since boot for 5 sec (lamp test)
+  digitalWrite(LED_BUILTIN, LOW);  // turn on RED LED
+  digitalWrite(LED_GPS, LOW);   // turn on GREEN LED
+  
+  #ifdef DEBUG
+    consoleSerial.println(F("*** MOTOR ON"));
+    digitalWrite(MOTOR, HIGH);  // turn on motor
+    delay(100);
+    digitalWrite(MOTOR, LOW);  // turn off motor
+    consoleSerial.println(F("*** MOTOR OFF"));
+    consoleSerial.println(F("*** CUTTER ON"));
+    digitalWrite(CUTTER, HIGH);  // turn on cutter
+    delay(100);
+    digitalWrite(CUTTER, LOW);  // turn off cutter
+    consoleSerial.println(F("*** CUTTER OFF"));
+  #endif
+
+  #ifdef MPR
+  digitalWrite(RESET_PIN, HIGH);  // take pressure sensor out of reset
+  #endif
+  //delay(1000);
+  
+
   
   // read parameters from EEPROM-- things we can adjust for flight
 
@@ -405,16 +422,16 @@ void setup() {
   // check for uninitialized EEPROM
   if (config.unit_id == 0xFFFF) { // not initialized, so lets initialize it
     #ifdef DEBUG
-    consoleSerial.println("*** initializing EEPROM");
+    consoleSerial.println(F("*** initializing EEPROM"));
     #endif
     config.unit_id = 0;
     config.letdown_delay = 30000;
-    config.cut_duration = 30000;
+    config.cut_duration = 5000;
     config.max_flight_duration = 0;
     config.cut_pressure = 0;
-    config.cut_duration = 30000;
-    config.rise_rate_threshold = 0xFF;
-    config.update_interval_satellite = 60;
+    config.letdown_duration = 30000;
+    config.rise_rate_threshold = 0x5A;
+    config.update_interval_satellite = 120;
     config.max_distance = 0;
     config.min_latitude = 0;
     config.max_latitude = 0;
@@ -424,9 +441,13 @@ void setup() {
   } 
   
   // check for commands on serial port;
-
+  #ifdef DEBUG
+  consoleSerial.print(F("*** Wait for serial cmd"));
+  #endif
   for(uint8_t i=0; i<10; i++) {
-
+    #ifdef DEBUG
+    consoleSerial.print(F("."));
+    #endif
     digitalWrite(LED_BUILTIN, i%2);  // blink LEDs during programming phase
     digitalWrite(LED_GPS, !(i%2));
     
@@ -434,14 +455,20 @@ void setup() {
     timer = millis();  // timer for end of message
     while( ((millis()-timer) < 1000L) ) {
       if ( (x = consoleSerial.read()) > -1) {
+        //consoleSerial.print(F("$"));  // echo character for debug
         timer = millis();  // reset timer
         MT_buffer[counter++] = (uint8_t)x;   // load each serial rx character into cmd buffer until timeout
       }
     }
     if (counter>0) {  // if some bytes were read
-      //print_hex_buffer(consoleSerial,MT_buffer,counter);
-      //consoleSerial.println();
-      //delay(100);
+      if (0) {
+        print_hex_buffer(consoleSerial,MT_buffer,counter);
+        consoleSerial.println();
+        delay(100);
+      }
+      #ifdef DEBUG
+      consoleSerial.println();
+      #endif
       status = process_cmd(MT_buffer, counter);  // do the thing
       if (status==0) {
         consoleSerial.println(F("ERR"));  // process command returned error status
@@ -457,7 +484,9 @@ void setup() {
         //consoleSerial.println();
         break;
       }
-      //consoleSerial.println();
+      //#ifdef DEBUG
+      //  consoleSerial.println();
+      //#endif
     }
   } 
 
@@ -465,7 +494,7 @@ void setup() {
   digitalWrite(LED_GPS, LOW);
 
   #ifdef DEBUG
-     consoleSerial.print(F("*** Config "));
+     consoleSerial.print(F("\r\n*** Config "));
      print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
      consoleSerial.println();
   #endif
