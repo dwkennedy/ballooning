@@ -14,15 +14,15 @@ def print_hi(name):
 def build_config_struct():
 
     unit_id = 0x0101
-    letdown_delay = 30000
-    letdown_duration = 30000
-    max_flight_duration = 0
-    cut_pressure = 0
-    cut_duration = 30000
-    rise_rate_threshold = 0xFF
-    update_interval_satellite = 60
-    max_distance = 0
-    min_latitude = 0
+    letdown_delay = 30000  # milliseconds
+    letdown_duration = 30000  # milliseconds
+    max_flight_duration = 60000   # SECONDS, 0=ignore
+    cut_pressure = 0  # Pascals, 0=ignore
+    cut_duration = 5000  # milliseconds
+    rise_rate_threshold = 85  # Pa/sec * uncalibrated factor: NWC elevator is 100
+    update_interval_satellite = 120  # SECONDS, 0 = no update
+    max_distance = 0  # meters, 0=ignore
+    min_latitude = 0  # millionths of degree, ie 35.123456 = 35123456, 0=ignore
     max_latitude = 0
     min_longitude = 0
     max_longitude = 0x7FFFFFFF
@@ -47,8 +47,13 @@ def build_config_struct():
 if __name__ == '__main__':
     config_bytes = b'PRG' + build_config_struct()
 
+    if (leg(sys.argv)<2):
+        port = "COM20"
+    else:
+        port = sys.argv[1]
+
     try:
-        serialPort = serial.Serial(port="COM20", baudrate=19200,
+        serialPort = serial.Serial(port=port, baudrate=19200,
                                bytesize=8, timeout=2, stopbits=serial.STOPBITS_ONE)
     except Exception as e:
         print(e)
@@ -69,12 +74,12 @@ if __name__ == '__main__':
         print(serialPort.readline())
         sleep(0.100)
 
-    sleep(0.100)
+    sleep(5.100)
 
     for i in range(1,2):
         print("sending " + str(config_bytes))
         serialPort.write(config_bytes)
-        for i in range(1, 20):
+        for i in range(1, 10):
             foo = serialPort.readline()
             if (foo):
                 print(foo)
@@ -83,9 +88,9 @@ if __name__ == '__main__':
                 if (foo==b'ERR\r\n'):
                     print("retry " + str(config_bytes))
                     serialPort.write(config_bytes)
-                sleep(0.100)
+                    sleep(1.1)
             else:
-                sleep(0.5)
+                sleep(0.1)
 
     for i in range(1,10):
         foo=serialPort.readline() # (serialPort.in_waiting)
