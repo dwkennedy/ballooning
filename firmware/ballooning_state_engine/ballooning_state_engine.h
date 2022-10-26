@@ -20,8 +20,8 @@ struct sat_message {
 
 struct eeprom_config {
   uint16_t unit_id;
-  uint16_t letdown_delay; // (milliseconds after launch detect)
-  uint16_t letdown_duration; // (milliseconds, 0=disable)
+  int16_t letdown_delay; // (seconds;  positive number: letdown X seconds after launch detect; negative letdown, letdown X seconds after power on)
+  uint16_t letdown_duration; // (seconds, 0=disable)
   uint16_t max_flight_duration; // seconds (0=ignore)
   uint16_t cut_pressure; //  Pa.  (0=ignore)
   uint16_t cut_duration; // (milliseconds)

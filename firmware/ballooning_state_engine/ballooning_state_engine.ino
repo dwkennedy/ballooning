@@ -157,7 +157,8 @@ static long max_longitude;
 #define SLEEP_PIN (3)
 SoftwareSerial gpsSerial (7,6); // RX, TX
 SoftwareSerial consoleSerial (10,9); // RX, TX 
-IridiumSBD modem(satSerial, SLEEP_PIN, RING_PIN);  // Declare the IridiumSBD object
+//IridiumSBD modem(satSerial, SLEEP_PIN, RING_PIN);  // Declare the IridiumSBD object
+IridiumSBD modem(satSerial, -1, RING_PIN);  // Declare the IridiumSBD object
 TinyGPSPlus gps;  // Declare the TinyGPSPlus object
 
 // vector of filter coefficients
@@ -274,7 +275,7 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       #endif
       if (active_state == SETUP) {
         timer = millis();
-        while ( (millis()-timer) < config.letdown_duration) {
+        while ( ((millis()-timer)/(uint32_t)1000) < config.letdown_duration) {
           digitalWrite(LED_BUILTIN, LOW);
           digitalWrite(LED_GPS, LOW);
           digitalWrite(MOTOR, HIGH);
@@ -366,12 +367,12 @@ void setup() {
   consoleSerial.begin(19200);  // software serial to debugging console
   consoleSerial.listen();
   
+    // avoid double setup and wait for LED test
+  delay(6000);
+ 
   #ifdef DEBUG
     consoleSerial.println(F("\r\n*** Start setup()"));
   #endif
-    
-  // avoid double setup and wait for LED test
-  delay(5000);
   
   // turn off all LED, on since boot for 5 sec (lamp test)
   digitalWrite(LED_BUILTIN, LOW);  // turn on RED LED
@@ -422,14 +423,14 @@ void setup() {
   // check for uninitialized EEPROM
   if (config.unit_id == 0xFFFF) { // not initialized, so lets initialize it
     #ifdef DEBUG
-    consoleSerial.println(F("*** initializing EEPROM"));
+    consoleSerial.println(F("*** Initializing EEPROM"));
     #endif
     config.unit_id = 0;
-    config.letdown_delay = 30000;
-    config.cut_duration = 5000;
+    config.letdown_delay = 30;  // seconds; positive: delay after launch detect, negative: delay after power on
+    config.cut_duration = 5000;  // milliseconds
     config.max_flight_duration = 0;
     config.cut_pressure = 0;
-    config.letdown_duration = 30000;
+    config.letdown_duration = 5;  //seconds
     config.rise_rate_threshold = 0x5A;
     config.update_interval_satellite = 120;
     config.max_distance = 0;
@@ -442,12 +443,9 @@ void setup() {
   
   // check for commands on serial port;
   #ifdef DEBUG
-  consoleSerial.print(F("*** Wait for serial cmd"));
+  consoleSerial.println(F("*** Wait for serial cmd"));
   #endif
   for(uint8_t i=0; i<10; i++) {
-    #ifdef DEBUG
-    consoleSerial.print(F("."));
-    #endif
     digitalWrite(LED_BUILTIN, i%2);  // blink LEDs during programming phase
     digitalWrite(LED_GPS, !(i%2));
     
@@ -466,27 +464,18 @@ void setup() {
         consoleSerial.println();
         delay(100);
       }
-      #ifdef DEBUG
-      consoleSerial.println();
-      #endif
       status = process_cmd(MT_buffer, counter);  // do the thing
       if (status==0) {
         consoleSerial.println(F("ERR"));  // process command returned error status
         //print_hex_buffer(consoleSerial, MT_buffer, counter);
-        //consoleSerial.println();
       } else if (status==1) {
         consoleSerial.println(F("OK"));  // good command receive
         //print_hex_buffer(consoleSerial, MT_buffer, counter);
-        //consoleSerial.println();
       } else if (status==2) {
         consoleSerial.println(F("END"));  // end command received
         //print_hex_buffer(consoleSerial, (uint8_t)&config, sizeof(struct eeprom_config));  // config struct
-        //consoleSerial.println();
         break;
       }
-      //#ifdef DEBUG
-      //  consoleSerial.println();
-      //#endif
     }
   } 
 
@@ -494,7 +483,7 @@ void setup() {
   digitalWrite(LED_GPS, LOW);
 
   #ifdef DEBUG
-     consoleSerial.print(F("\r\n*** Config "));
+     consoleSerial.print(F("*** Config "));
      print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
      consoleSerial.println();
   #endif
@@ -1030,7 +1019,8 @@ bool ISBDCallback() {
 
   switch (active_state) {
     case PRELAUNCH:  // short flash, 1Hz
-      if (rise_rate > config.rise_rate_threshold) {
+      if ((config.letdown_delay >= 0) && (rise_rate > config.rise_rate_threshold)) {
+        // detect launch due to pressure drop
         launch_time = (millis() - FILTER_DELAY);
         LED_period = 500;  // long slow blink
         LED_duration = 450;
@@ -1051,6 +1041,20 @@ bool ISBDCallback() {
         #endif
         // turn off GPS valid LED, because at this point it's too late to get a good launch coordinate.
         //   ... and the device is flying away before the GPS was locked.  OOPS
+      } else if ((config.letdown_delay < 0) && ((millis()/1000L) > (-1*config.letdown_delay))) {
+        // launch due to time after power on
+        launch_time = millis();
+        LED_period = 500;  // long slow blink
+        LED_duration = 450;
+        active_state = LETDOWN_INIT;
+        #ifdef DEBUG
+          consoleSerial.print(F("LAUNCH BY TIMER AT: "));
+          consoleSerial.println(millis()/(uint32_t)1000);
+          consoleSerial.print(F("LATITUDE: "));
+          consoleSerial.println(launch_lat,6);
+          consoleSerial.print(F("LONGITUDE: "));
+          consoleSerial.println(launch_lon,6);
+        #endif
       } else {
         // update launch location if we have a lock
         // updating many times while in prelaunch mode means we have many bites at the apple to get a good gps location
@@ -1064,7 +1068,7 @@ bool ISBDCallback() {
       break;
 
     case LETDOWN_INIT:  // long flashes 2Hz
-      if ( ((millis() - launch_time)) > config.letdown_delay) {
+      if ( ((millis() - launch_time)/1000L) > abs(config.letdown_delay) ) {
         digitalWrite(CUTTER, LOW);
         digitalWrite(MOTOR, HIGH);
         LED_period = 100;
@@ -1078,7 +1082,7 @@ bool ISBDCallback() {
       break;
 
     case LETDOWN_ACTIVE:  // letting down, 10Hz flashes
-      if ( (millis() - launch_time) > (config.letdown_delay + config.letdown_duration) ) {
+      if ( ((millis() - launch_time)/1000L) > ((abs(config.letdown_delay) + config.letdown_duration)) ) {
         digitalWrite(MOTOR, LOW);
         LED_period = 2000;
         LED_duration = 50;
@@ -1092,7 +1096,7 @@ bool ISBDCallback() {
 
     case FLIGHT:  // short flash, 0.5Hz
       // check time limit; set max_flight_duration to 0 to disable time initiated cut
-      if ((config.max_flight_duration > 0) && ( (millis() - launch_time) > config.max_flight_duration)) {
+      if ((config.max_flight_duration > 0) && ( ((millis() - launch_time)/1000L) > config.max_flight_duration)) {
         active_state = CUT_INIT;
         break;
       }
