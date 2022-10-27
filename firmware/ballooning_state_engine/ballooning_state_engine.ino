@@ -962,11 +962,12 @@ bool ISBDCallback() {
   uint32_t this_update_millis = (millis() % ((uint32_t)1000 * update_interval_console));
   // send status message periodically via HW serial / satellite
   if ( update_interval_console && (this_update_millis < last_update_millis)) {
+    consoleSerial.print("time,state,ring,pressure,rise_rate,lat,lon,distance,gps_rx,voltage");
     consoleSerial.print(millis() / (uint32_t)1000);
     consoleSerial.print(F(","));
     consoleSerial.print(active_state);
     consoleSerial.print(F(","));
-    //consoleSerial.print(digitalRead(RING_PIN)?"IDLE,":"RING,");
+    consoleSerial.print(modem.hasRingAsserted()?"IDLE,":"RING,");
     /*int c = gps.time.minute();
     if (c < 10) {
       consoleSerial.print(F("0")); // leading zero
@@ -981,21 +982,21 @@ bool ISBDCallback() {
     consoleSerial.print(F(",")); */
     consoleSerial.print(current_pressure);
     consoleSerial.print(F(","));
-    consoleSerial.print(pressure_sample);
-    consoleSerial.print(F(","));
+    //consoleSerial.print(pressure_sample);
+    //consoleSerial.print(F(","));
     consoleSerial.print(rise_rate);
     consoleSerial.print(F(","));
-    consoleSerial.print(temperature_sample);
-    consoleSerial.print(F(","));
+    //consoleSerial.print(temperature_sample);
+    //consoleSerial.print(F(","));
     consoleSerial.print(gps.location.lat(),6);
     consoleSerial.print(F(","));
     consoleSerial.print(gps.location.lng(),6);
     consoleSerial.print(F(","));
-    consoleSerial.print(gps.altitude.meters());
-    consoleSerial.print(F(","));
-    consoleSerial.print((float)gps.course.value()/100.0);
-    consoleSerial.print(F(","));
-    consoleSerial.print((float)gps.speed.value()/100.0);
+    //consoleSerial.print(gps.altitude.meters());
+    //consoleSerial.print(F(","));
+    //consoleSerial.print((float)gps.course.value()/100.0);
+    //consoleSerial.print(F(","));
+    //consoleSerial.print((float)gps.speed.value()/100.0);
     consoleSerial.print(F(","));
     if (gps.location.isValid()) {
       consoleSerial.print(TinyGPSPlus::distanceBetween(gps.location.lat(),
