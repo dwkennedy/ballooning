@@ -14,10 +14,10 @@ def print_hi(name):
 
 def build_config_struct():
 
-    unit_id = 0x0101
+    unit_id = 1234
     letdown_delay = -30  # positive: seconds after launch detect: negative, seconds after power on
     letdown_duration = 5  # seconds
-    max_flight_duration = 60  # SECONDS, 0=ignore
+    max_flight_duration = 0  # SECONDS, 0=ignore
     cut_pressure = 0  # Pascals, 0=ignore
     cut_duration = 5000  # milliseconds
     rise_rate_threshold = 85  # Pa/sec * uncalibrated factor: NWC elevator is 100
@@ -26,7 +26,7 @@ def build_config_struct():
     min_latitude = 0  # millionths of degree, ie 35.123456 = 35123456, 0=ignore
     max_latitude = 0
     min_longitude = 0
-    max_longitude = 0x7FFFFFFE
+    max_longitude = 0 # 0x7FFFFFFE
 
     config = struct.pack('< HhHHHHHHIiiii',
                          unit_id,

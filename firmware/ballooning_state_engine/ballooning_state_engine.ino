@@ -155,7 +155,7 @@ static long max_longitude;
 #define satSerial Serial
 #define RING_PIN (2)
 #define SLEEP_PIN (3)
-SoftwareSerial gpsSerial (7,6); // RX, TX
+SoftwareSerial gpsSerial (6,7); // RX, TX
 SoftwareSerial consoleSerial (10,9); // RX, TX 
 //IridiumSBD modem(satSerial, SLEEP_PIN, RING_PIN);  // Declare the IridiumSBD object
 IridiumSBD modem(satSerial, -1, RING_PIN);  // Declare the IridiumSBD object
@@ -196,8 +196,8 @@ bool loopEnabled = false; // turn on/off SBD callback
 
 uint16_t LED_period = 2000;  // interval to blink LED
 uint16_t LED_duration = 50;  // duration of LED blink
-const uint16_t GPS_LED_period = 1000;  // interval to blink GPS locked LED
-const uint16_t GPS_LED_duration = 100;  // duration to blink GPS locked LED
+const uint16_t GPS_LED_period = 2000;  // interval to blink GPS locked LED
+const uint16_t GPS_LED_duration = 1800;  // duration to blink GPS locked LED
 
 static uint32_t launch_time = 0;  // so we can time letdown and flight time
 float launch_lat;
@@ -1005,7 +1005,9 @@ bool ISBDCallback() {
       consoleSerial.print(F("NaN"));  // no GPS lock, so no accurate distance available
     }
     consoleSerial.print(F(","));
-    consoleSerial.println(analogRead(BATT_SENSE));
+    consoleSerial.print(gps.passedChecksum());
+    consoleSerial.print(F(","));
+    consoleSerial.println(analogRead(BATT_SENSE)/85.25); // (4*(analogRead(BATT_SENSE)/1023)*3.3); // 4:1 voltage divider, 3.3 analog reference
   }
   
   // update update time so we can detect overflow on next loop iteration
@@ -1085,7 +1087,7 @@ bool ISBDCallback() {
       if ( ((millis() - launch_time)/1000L) > ((abs(config.letdown_delay) + config.letdown_duration)) ) {
         digitalWrite(MOTOR, LOW);
         LED_period = 2000;
-        LED_duration = 50;
+        LED_duration = 200;
         active_state = FLIGHT;
         #ifdef DEBUG
           consoleSerial.print(F("MOTOR OFF: "));
@@ -1152,7 +1154,7 @@ bool ISBDCallback() {
       if ( (millis() - cut_time) > (config.cut_duration)) {
         digitalWrite(CUTTER, LOW);
         LED_period = 4000;
-        LED_duration = 100;
+        LED_duration = 200;
         active_state = POST_FLIGHT;
         #ifdef DEBUG
           consoleSerial.print(F("CUTDOWN OFF: "));
