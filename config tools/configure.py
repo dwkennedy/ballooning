@@ -53,11 +53,14 @@ if __name__ == '__main__':
     else:
         port = sys.argv[1]
 
+    print("Hex string for Rockblock: " + config_bytes.hex())
+
     try:
         serialPort = serial.Serial(port=port, baudrate=19200,
                                bytesize=8, timeout=2, stopbits=serial.STOPBITS_ONE)
     except Exception as e:
         print(e)
+        print("Check serial port in device manager!")
         quit(1)
 
     while serialPort.in_waiting:
