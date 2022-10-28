@@ -15,9 +15,9 @@ def print_hi(name):
 def build_config_struct():
 
     unit_id = 1235
-    letdown_delay = -120  # positive: seconds after launch detect: negative, seconds after power on
+    letdown_delay = -60  # positive: seconds after launch detect: negative, seconds after power on
     letdown_duration = 5  # seconds
-    max_flight_duration = 180  # SECONDS, 0=ignore
+    max_flight_duration = 120  # SECONDS, 0=ignore
     cut_pressure = 0  # Pascals, 0=ignore
     cut_duration = 5000  # milliseconds
     rise_rate_threshold = 85  # Pa/sec * uncalibrated factor: NWC elevator is 100

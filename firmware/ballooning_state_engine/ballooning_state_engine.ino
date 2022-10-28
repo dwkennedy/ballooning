@@ -1110,7 +1110,7 @@ bool ISBDCallback() {
       break;
 
     case LETDOWN_INIT:  // long flashes 2Hz
-      if ( ((millis() - launch_time)/1000L) > config.letdown_delay ) {  // if config.letdown_delay is negative, this will succeed immediately
+      if ( (int32_t)((millis() - launch_time)/1000L) > (int32_t)config.letdown_delay ) {  // if config.letdown_delay is negative, this will succeed immediately
         digitalWrite(CUTTER, LOW);
         digitalWrite(MOTOR, HIGH);
         LED_period = 100;
