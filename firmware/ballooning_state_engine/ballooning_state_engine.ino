@@ -242,7 +242,6 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
     consoleSerial.println(buffer_size);
     #endif
     
-    // CUT command:  CUTxx  where xx is uint16_t unit_id (deprecated)
     // CUT command:  CUT (3 bytes)
     //if ((buffer_size == 5) && !strncmp(buffer, "CUT", 3) && !strncmp(buffer+3, config.unit_id, 2)) {
     if ((buffer_size == 3) && !strncmp(buffer, "CUT", 3) ) {
@@ -265,7 +264,6 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       return(1);  // good command status
     }
 
-    // LET command: LETxx  activate letdown for xx milliseconds (deprecated
     // LET command: LET (3 bytes)
     else if ((buffer_size == 3) && !strncmp(buffer, "LET", 3)) {
       // do letdown stuff here  
@@ -822,6 +820,19 @@ void loop() {
           consoleSerial.println(F("*** PNG received, returning message"));
         #endif
         status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size-3); // TX/RX a message in binary
+        #ifdef DEBUG
+          consoleSerial.print(F("*** SBD TX status: "));
+          consoleSerial.println(status);
+          // Clear the Mobile Originated message buffer to avoid re-sending the message during subsequent loops
+          consoleSerial.println(F("*** SBD Clearing the MO buffer"));
+        #endif
+        status = modem.clearBuffers(ISBD_CLEAR_MO); // Clear MO buffer
+        #ifdef DEBUG
+          if (status != ISBD_SUCCESS) {
+            Serial.print(F("*** SBD clearBuffers failed: error "));
+            Serial.println(status);
+          }
+        #endif
       } else {
         if (!strncmp(MT_buffer, "CFG", 3)) {
           // send CFG+configuration string back   
@@ -831,7 +842,20 @@ void loop() {
             consoleSerial.println();
           #endif
           memcpy((uint8_t *)&config, MT_buffer+3, sizeof(config));  // update MT_buffer to include current config
-          status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size+sizeof(config));  // TX/RX CFG+binary configuration structure
+          status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size+sizeof(config));  // TX CFG+binary configuration structure
+          #ifdef DEBUG
+            consoleSerial.print(F("*** SBD TX status: "));
+            consoleSerial.println(status);
+            // Clear the Mobile Originated message buffer to avoid re-sending the message during subsequent loops
+            consoleSerial.println(F("*** SBD Clearing the MO buffer"));
+          #endif
+          status = modem.clearBuffers(ISBD_CLEAR_MO); // Clear MO buffer
+          #ifdef DEBUG
+            if (status != ISBD_SUCCESS) {
+              Serial.print(F("*** SBD clearBuffers failed: error "));
+              Serial.println(status);
+            }
+          #endif
         } else {
           process_cmd(MT_buffer, MT_buffer_size);        
         }
