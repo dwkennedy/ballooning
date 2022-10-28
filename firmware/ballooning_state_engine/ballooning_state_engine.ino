@@ -1061,8 +1061,7 @@ bool ISBDCallback() {
         // turn off GPS valid LED, because at this point it's too late to get a good launch coordinate.
         //   ... and the device is flying away before the GPS was locked.  OOPS
       } else if ((config.letdown_delay < 0) && ((millis()/1000L) > (-1*config.letdown_delay))) {
-        // launch due to time after power on
-        launch_time = millis();
+        launch_time = 0;  // for negative letdown_delay, we delay letdown from "launch" at zero millis()
         LED_period = 500;  // long slow blink
         LED_duration = 450;
         active_state = LETDOWN_INIT;
@@ -1087,7 +1086,7 @@ bool ISBDCallback() {
       break;
 
     case LETDOWN_INIT:  // long flashes 2Hz
-      if ( ((millis() - launch_time)/1000L) > abs(config.letdown_delay) ) {
+      if ( ((millis() - launch_time)/1000L) > config.letdown_delay ) {  // if config.letdown_delay is negative, this will succeed immediately
         digitalWrite(CUTTER, LOW);
         digitalWrite(MOTOR, HIGH);
         LED_period = 100;
