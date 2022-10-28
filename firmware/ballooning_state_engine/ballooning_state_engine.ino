@@ -485,7 +485,7 @@ void setup() {
   digitalWrite(LED_GPS, LOW);
 
   #ifdef DEBUG
-     consoleSerial.print(F("*** Config "));
+     consoleSerial.print(F("*** CFG "));
      print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
      consoleSerial.println();
   #endif
@@ -818,9 +818,23 @@ void loop() {
       //PNG command:  return bytes 
       if (!strncmp(MT_buffer, "PNG", 3)) {
         //  send MT_buffer back
+        #ifdef DEBUG
+          consoleSerial.println(F("*** PNG received, returning message"));
+        #endif
         status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size-3); // TX/RX a message in binary
       } else {
-        process_cmd(MT_buffer, MT_buffer_size);
+        if (!strncmp(MT_buffer, "CFG", 3)) {
+          // send CFG+configuration string back   
+          #ifdef DEBUG
+            consoleSerial.print(F("*** CFG received, returning "));
+            print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
+            consoleSerial.println();
+          #endif
+          memcpy((uint8_t *)&config, MT_buffer+3, sizeof(config));  // update MT_buffer to include current config
+          status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size+sizeof(config));  // TX/RX CFG+binary configuration structure
+        } else {
+          process_cmd(MT_buffer, MT_buffer_size);        
+        }
       }
     }
   }
