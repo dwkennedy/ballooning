@@ -354,6 +354,8 @@ void setup() {
   pinMode(SLEEP_PIN, OUTPUT);
   digitalWrite(SLEEP_PIN, HIGH);
 
+  analogReference(EXTERNAL); // use AREF for reference voltage
+
 #ifdef MPR
   // pressure sensor reset
   pinMode(RESET_PIN, OUTPUT);
@@ -688,6 +690,7 @@ void setup() {
     consoleSerial.print(F("*** base_pressure="));
     consoleSerial.println(base_pressure);
     consoleSerial.println(F("*** End setup()"));
+    consoleSerial.println(F("time,state,ring,pressure,rise_rate,lat,lon,distance,gps_rx,voltage"));
   #endif
 
   n = 0;  // index to oldest sample, first to be replaced in buffer; n is the index into the circular buffer of pressures
@@ -962,12 +965,11 @@ bool ISBDCallback() {
   uint32_t this_update_millis = (millis() % ((uint32_t)1000 * update_interval_console));
   // send status message periodically via HW serial / satellite
   if ( update_interval_console && (this_update_millis < last_update_millis)) {
-    consoleSerial.print("time,state,ring,pressure,rise_rate,lat,lon,distance,gps_rx,voltage");
     consoleSerial.print(millis() / (uint32_t)1000);
     consoleSerial.print(F(","));
     consoleSerial.print(active_state);
     consoleSerial.print(F(","));
-    consoleSerial.print(modem.hasRingAsserted()?"IDLE,":"RING,");
+    consoleSerial.print((!modem.hasRingAsserted())?"IDLE,":"RING,");
     /*int c = gps.time.minute();
     if (c < 10) {
       consoleSerial.print(F("0")); // leading zero
@@ -997,7 +999,7 @@ bool ISBDCallback() {
     //consoleSerial.print((float)gps.course.value()/100.0);
     //consoleSerial.print(F(","));
     //consoleSerial.print((float)gps.speed.value()/100.0);
-    consoleSerial.print(F(","));
+    //consoleSerial.print(F(","));
     if (gps.location.isValid()) {
       consoleSerial.print(TinyGPSPlus::distanceBetween(gps.location.lat(),
           gps.location.lng(), launch_lat, launch_lon));
