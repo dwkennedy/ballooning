@@ -381,7 +381,7 @@ void setup() {
   #ifdef DEBUG
     consoleSerial.println(F("*** MOTOR ON"));
     digitalWrite(MOTOR, HIGH);  // turn on motor
-    delay(100);
+    delay(50);
     digitalWrite(MOTOR, LOW);  // turn off motor
     consoleSerial.println(F("*** MOTOR OFF"));
     consoleSerial.println(F("*** CUTTER ON"));
