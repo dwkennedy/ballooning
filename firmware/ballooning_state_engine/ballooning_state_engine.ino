@@ -431,7 +431,7 @@ void setup() {
     config.max_flight_duration = 0;
     config.cut_pressure = 0;
     config.letdown_duration = 5;  //seconds
-    config.rise_rate_threshold = 0x5A;
+    config.rise_rate_threshold = 0x5A;  // 90
     config.update_interval_satellite = 120;
     config.max_distance = 0;
     config.min_latitude = 0;
