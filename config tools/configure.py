@@ -23,10 +23,25 @@ def build_config_struct():
     rise_rate_threshold = 85  # Pa/sec * uncalibrated factor: NWC elevator is 100
     update_interval_satellite = 60  # SECONDS, 0 = no update
     max_distance = 0  # meters, 0=ignore
-    min_latitude = 35185821  # millionths of degree, ie 35.123456 = 35123456, 0=ignore
-    max_latitude = 35188641
-    min_longitude = -97449192
-    max_longitude = -97442332
+    min_latitude = 0  # millionths of degrees, ie 35.123456 = 35123456, 0=ignore
+    max_latitude = 0
+    min_longitude = 0
+    max_longitude = 0
+    if (0):   # lloyd noble drive test
+        min_latitude = 35185821  # millionths of degree, ie 35.123456 = 35123456, 0=ignore
+        max_latitude = 35188641
+        min_longitude = -97449192
+        max_longitude = -97442332
+
+    # fix swapped min/max
+    if (min_longitude > max_longitude):
+        temp = max_longitude
+        max_longitude = min_longitude
+        min_longitude = temp
+    if (min_latitude > max_latitude):
+        temp = max_latitude
+        max_latitude = min_latitude
+        min_latitude = temp
 
     config = struct.pack('< HhHHHHHHIiiii',
                          unit_id,
