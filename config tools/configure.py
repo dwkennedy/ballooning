@@ -29,6 +29,7 @@ def build_config_struct():
         min_longitude = -97446539
         max_longitude = -97442332
 
+
     # fix swapped min/max
     if (min_longitude > max_longitude):
         temp = max_longitude
