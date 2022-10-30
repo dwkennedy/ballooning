@@ -29,8 +29,8 @@ def build_config_struct():
     max_longitude = 0
     if (0):   # lloyd noble drive test
         min_latitude = 35185821  # millionths of degree, ie 35.123456 = 35123456, 0=ignore
-        max_latitude = 35188641
-        min_longitude = -97449192
+        max_latitude = 35188899
+        min_longitude = -97446539
         max_longitude = -97442332
 
     # fix swapped min/max
