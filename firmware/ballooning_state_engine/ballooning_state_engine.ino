@@ -1048,7 +1048,7 @@ bool ISBDCallback() {
     consoleSerial.print(F(","));
     consoleSerial.print(gps.passedChecksum());
     consoleSerial.print(F(","));
-    consoleSerial.println(analogRead(BATT_SENSE)/85.25); // (4*(analogRead(BATT_SENSE)/1023)*3.3); // 4:1 voltage divider, 3.3 analog reference
+    consoleSerial.println(analogRead(BATT_SENSE)/77.57575758); // (4*(analogRead(BATT_SENSE)/1024)*3.3); // 4:1 voltage divider, 3.3 analog reference
   }
   
   // update update time so we can detect overflow on next loop iteration
