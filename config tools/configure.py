@@ -12,22 +12,27 @@ def print_hi(name):
     # Use a breakpoint in the code line below to debug your script.
     print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
 
+
+def unpack_config_struct(buffer):
+    config = struct.unpack_from('< HhHHHHHHIiiii', buffer, 3)
+    return config
+
 def build_config_struct():
 
     unit_id = 1235
-    letdown_delay = -30  # positive: seconds after launch detect: negative, seconds after power on
+    letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
     letdown_duration = 1  # seconds
-    max_flight_duration = 3000  # SECONDS, 0=ignore
-    cut_pressure = 0  # Pascals, 0=ignore
-    cut_duration = 20000  # milliseconds
-    rise_rate_threshold = 85  # Pa/sec * uncalibrated factor: NWC elevator is 100
+    max_flight_duration = 300  # SECONDS, 0=ignore
+    cut_pressure = 0      # Pascals, 0=ignore
+    cut_duration = 10000  # milliseconds
+    rise_rate_threshold = 85  # Pa/sec * conversion factor: NWC elevator is 100
     update_interval_satellite = 60  # SECONDS, 0 = no update
     max_distance = 0  # meters, 0=ignore
     min_latitude = 0  # millionths of degrees, ie 35.123456 = 35123456, 0=ignore
     max_latitude = 0
     min_longitude = 0
     max_longitude = 0
-    if (0):   # lloyd noble drive test
+    if (1):   # lloyd noble drive test
         min_latitude = 35185821  # millionths of degree, ie 35.123456 = 35123456, 0=ignore
         max_latitude = 35188899
         min_longitude = -97446539
@@ -62,7 +67,62 @@ def build_config_struct():
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     config_bytes = b'PRG' + build_config_struct()
+    cfg = unpack_config_struct(config_bytes)
 
+    print("unit_id: %d" % cfg[0])
+
+    if (cfg[1]<0):
+        print("letdown_delay: %d seconds after power on" % abs(cfg[1]))
+    else:
+        print("letdown_delay: %d seconds after launch detect" % cfg[1])
+
+    print("letdown_duration: %d seconds" % cfg[2])
+
+    if (cfg[3]):
+        print("max_flight_duration: %d seconds" % cfg[3])
+    else:
+        print("max_flight_duration: no limit")
+
+    if (cfg[4]==0):
+        print("cut_pressure: no limit")
+    else:
+        print("cut_pressure: %d Pa" % cfg[4])
+
+    print("cut_duration: %d milliseconds" % cfg[5])
+
+    print("rise_rate_threshold: %d" % cfg[6])
+
+    if (cfg[7]>0):
+        print("update_interval_satellite: %d" % cfg[7])
+    else:
+        print("update_interval_satellite: NO UPDATES")
+
+    if (cfg[8]!=0):
+        print("max_distance: %d meters" % cfg[8])
+    else:
+        print("max_distance: ignore")
+
+    if (cfg[9]!=0):
+        print("min_latitude: %f degrees N" % (cfg[9]/1000000))
+    else:
+        print("min_latitude: ignore")
+
+    if (cfg[10]!=0):
+        print("max latitude: %f degrees N" % (cfg[10]/1000000))
+    else:
+        print("max latitude: ignore")
+
+    if (cfg[11]!=0):
+        print("min longitude: %f degrees W" % (cfg[11]/1000000))
+    else:
+        print("min longitude: ignore")
+
+    if (cfg[12]!=0):
+        print("max longitude: %f degrees W" % (cfg[12]/1000000))
+    else:
+        print("max longitude: ignore")
+
+    print("")
     if (len(sys.argv)<2):
         port = "COM20"
     else:
