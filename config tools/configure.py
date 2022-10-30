@@ -6,16 +6,7 @@ import struct
 import serial
 from time import sleep
 import sys
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
-
-
-def unpack_config_struct(buffer):
-    config = struct.unpack_from('< HhHHHHHHIiiii', buffer, 3)
-    return config
+import re
 
 def build_config_struct():
 
@@ -64,11 +55,11 @@ def build_config_struct():
                          max_longitude)
     return config
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    config_bytes = b'PRG' + build_config_struct()
-    cfg = unpack_config_struct(config_bytes)
+def print_hi(name):
+    # Use a breakpoint in the code line below to debug your script.
+    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
 
+def dump_config(cfg):
     print("unit_id: %d" % cfg[0])
 
     if (cfg[1]<0):
@@ -122,13 +113,26 @@ if __name__ == '__main__':
     else:
         print("max longitude: ignore")
 
+def unpack_config_struct(buffer):
+    config = struct.unpack_from('< HhHHHHHHIiiii', buffer, 3)
+    return config
+
+
+# Press the green button in the gutter to run the script.
+if __name__ == '__main__':
+    config_bytes = b'PRG' + build_config_struct()
+    cfg = unpack_config_struct(config_bytes)
+    dump_config(cfg)
+
+    cfgRegex = re.compile(b'\*\*\* CFG (.+)')  # regex to find configuration from BAD output
+
     print("")
     if (len(sys.argv)<2):
         port = "COM20"
     else:
         port = sys.argv[1]
 
-    print("Hex string for Rockblock: " + config_bytes.hex())
+    print("Hex string for RockBLOCK: " + config_bytes.hex())
 
     try:
         serialPort = serial.Serial(port=port, baudrate=19200,
@@ -176,6 +180,10 @@ if __name__ == '__main__':
         foo=serialPort.readline() # (serialPort.in_waiting)
         if(foo):
             print(foo.decode('UTF-8').rstrip())
+            dump = cfgRegex.search(foo) # look for CFG line
+            if(dump):
+                dump_config(dump)
+
             sleep(0.100)
         else:
             sleep(1)
