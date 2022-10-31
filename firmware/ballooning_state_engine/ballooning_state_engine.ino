@@ -199,7 +199,7 @@ bool loopEnabled = false; // turn on/off SBD callback
 uint16_t LED_period = 2000;  // interval to blink LED
 uint16_t LED_duration = 50;  // duration of LED blink
 const uint16_t GPS_LED_period = 2000;  // interval to blink GPS locked LED
-const uint16_t GPS_LED_duration = 1800;  // duration to blink GPS locked LED
+const uint16_t GPS_LED_duration = 2100;  // duration to blink GPS locked LED
 
 static uint32_t launch_time = 0;  // so we can time letdown and flight time.  static is not needed in global vars?
 float launch_lat;
@@ -430,11 +430,11 @@ void setup() {
     #endif
     config.unit_id = 0;
     config.letdown_delay = 30;  // seconds; positive: delay after launch detect, negative: delay after power on
-    config.cut_duration = 5000;  // milliseconds
-    config.max_flight_duration = 0;
+    config.cut_duration = 3000;  // milliseconds
+    config.max_flight_duration = 60;
     config.cut_pressure = 0;
     config.letdown_duration = 5;  //seconds
-    config.rise_rate_threshold = 0x5A;  // 90
+    config.rise_rate_threshold = 85;
     config.update_interval_satellite = 120;
     config.max_distance = 0;
     config.min_latitude = 0;
@@ -905,7 +905,7 @@ bool ISBDCallback() {
   }
 
   //  is last gps message valid + recently updated?
-  gps_isvalid = gps.location.isValid() && gps.location.age() < 3000;
+  gps_isvalid = (gps.location.isValid() && (gps.location.age() < 5000));
 
   // sample pressure periodically by detecting rollover of period ///////////////////////////////////////////////////////////////////////////////////
   this_sample_millis = millis() % T;
@@ -1048,12 +1048,6 @@ bool ISBDCallback() {
   
   // update update time so we can detect overflow on next loop iteration
   last_update_millis = this_update_millis;
-  
-  // LED update  -- moved it ISR
-  //digitalWrite(LED_RED, (millis() % LED_period) < LED_duration);
-
-  // GPS LED update; blink if valid, otherwise off
-  //digitalWrite(LED_GREEN, ( gps.location.isValid() && (millis() % GPS_LED_period) < GPS_LED_duration));
 
   switch (active_state) {
     case PRELAUNCH:  // short flash, 1Hz

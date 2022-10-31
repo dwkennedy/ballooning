@@ -23,12 +23,27 @@ def build_config_struct():
     max_latitude = 0
     min_longitude = 0
     max_longitude = 0
-    if (1):   # lloyd noble drive test
+
+    if (0):   # lloyd noble drive test
         min_latitude = 35185821  # millionths of degree, ie 35.123456 = 35123456, 0=ignore
         max_latitude = 35188899
         min_longitude = -97446539
         max_longitude = -97442332
 
+    if (1):  # LEE configuration
+        unit_id = 1236
+        letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
+        letdown_duration = 15  # seconds
+        max_flight_duration = 60*60  # SECONDS, 0=ignore
+        cut_pressure = 50000  # Pascals, 0=ignore
+        cut_duration = 5000  # milliseconds
+        rise_rate_threshold = 85  # Pa/sec * conversion factor: NWC elevator is 100
+        update_interval_satellite = 120  # SECONDS, 0 = no update
+        max_distance = 0  # meters, 0=ignore
+        min_latitude = 43052242  # millionths of degrees, ie 35.123456 = 35123456, 0=ignore
+        max_latitude = 44011595
+        min_longitude = -76979028
+        max_longitude = -75519990
 
     # fix swapped min/max
     if (min_longitude > max_longitude):
@@ -125,7 +140,7 @@ if __name__ == '__main__':
     cfg = unpack_config_struct(config_bytes)
     dump_config(cfg)
 
-    cfgRegex = re.compile(b'\*\*\* CFG (.+)')  # regex to find configuration from BAD output
+    cfgRegex = re.compile(b'\*\*\* CFG (.{72})')  # regex to find configuration from BAD output
 
     print("")
     if (len(sys.argv)<2):
@@ -181,7 +196,7 @@ if __name__ == '__main__':
         foo=serialPort.readline() # (serialPort.in_waiting)
         if(foo):
             print(foo.decode('UTF-8').rstrip())
-            dump = cfgRegex.search(foo) # look for CFG line
+            dump = cfgRegex.search(bytes.fromhex(foo)) # look for CFG line
             if(dump):
                 dump_config(dump)
 
