@@ -93,8 +93,10 @@ Adafruit_MPL3115A2 baro;
 // hot-wire cutter port
 #define CUTTER (4)
 
-// GPS LED port
-#define LED_GPS (12)
+// RED LED port
+#define LED_RED (13)
+// GREEN/GPS LED port
+#define LED_GREEN (12)
 
 // battery voltage analog input
 #define BATT_SENSE A3
@@ -197,12 +199,13 @@ bool loopEnabled = false; // turn on/off SBD callback
 uint16_t LED_period = 2000;  // interval to blink LED
 uint16_t LED_duration = 50;  // duration of LED blink
 const uint16_t GPS_LED_period = 2000;  // interval to blink GPS locked LED
-const uint16_t GPS_LED_duration = 1800;  // duration to blink GPS locked LED
+const uint16_t GPS_LED_duration = 2100;  // duration to blink GPS locked LED
 
-static uint32_t launch_time = 0;  // so we can time letdown and flight time
+static uint32_t launch_time = 0;  // so we can time letdown and flight time.  static is not needed in global vars?
 float launch_lat;
 float launch_lon;
 float launch_alt;
+bool gps_isvalid;  // flag to indiate valid lock or not
 
 uint16_t batt_voltage;
 uint32_t current_pressure;
@@ -253,8 +256,8 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       if (active_state == SETUP) {
         timer = millis();
         while ( (millis()-timer) < config.cut_duration) {
-          digitalWrite(LED_BUILTIN, LOW);
-          digitalWrite(LED_GPS, LOW);
+          digitalWrite(LED_RED, LOW);
+          digitalWrite(LED_GREEN, LOW);
           digitalWrite(CUTTER, HIGH);
         }
         digitalWrite(CUTTER, LOW);
@@ -274,8 +277,8 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       if (active_state == SETUP) {
         timer = millis();
         while ( ((millis()-timer)/(uint32_t)1000) < config.letdown_duration) {
-          digitalWrite(LED_BUILTIN, LOW);
-          digitalWrite(LED_GPS, LOW);
+          digitalWrite(LED_RED, LOW);
+          digitalWrite(LED_GREEN, LOW);
           digitalWrite(MOTOR, HIGH);
         }
         digitalWrite(MOTOR, LOW);
@@ -321,9 +324,9 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
 void error_flash(uint8_t flashes, uint8_t repeats) {
   for (uint8_t repeat = 0; repeat < repeats; repeat++) {
     for (uint8_t count = 0; count < flashes; count++) {
-        digitalWrite(LED_BUILTIN, HIGH);  // blink LED to indicate problem
+        digitalWrite(LED_RED, HIGH);  // blink LED to indicate problem
         delay(100);
-        digitalWrite(LED_BUILTIN, LOW);
+        digitalWrite(LED_RED, LOW);
         delay(100);
     }
     delay(300);  // extra space between repetition of code
@@ -339,11 +342,11 @@ void setup() {
   digitalWrite(CUTTER, LOW);  // cutter off
 
   // set up GPS LED
-  pinMode(LED_GPS, OUTPUT);
-  digitalWrite(LED_GPS, HIGH);
+  pinMode(LED_GREEN, OUTPUT);
+  digitalWrite(LED_GREEN, HIGH);
   // set up output indicator LED
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
+  pinMode(LED_RED, OUTPUT);
+  digitalWrite(LED_RED, HIGH);
 
   // iridium modem ring signal
   pinMode(RING_PIN, INPUT);
@@ -369,14 +372,14 @@ void setup() {
   
     // avoid double setup and wait for LED test
   delay(6000);
- 
+  
   #ifdef DEBUG
     consoleSerial.println(F("\r\n*** Start setup()"));
   #endif
   
   // turn off all LED, on since boot for 5 sec (lamp test)
-  digitalWrite(LED_BUILTIN, LOW);  // turn on RED LED
-  digitalWrite(LED_GPS, LOW);   // turn on GREEN LED
+  digitalWrite(LED_RED, LOW);  // turn on RED LED
+  digitalWrite(LED_GREEN, LOW);   // turn on GREEN LED
   
   #ifdef DEBUG
     consoleSerial.println(F("*** MOTOR ON"));
@@ -427,11 +430,11 @@ void setup() {
     #endif
     config.unit_id = 0;
     config.letdown_delay = 30;  // seconds; positive: delay after launch detect, negative: delay after power on
-    config.cut_duration = 5000;  // milliseconds
-    config.max_flight_duration = 0;
+    config.cut_duration = 3000;  // milliseconds
+    config.max_flight_duration = 60;
     config.cut_pressure = 0;
     config.letdown_duration = 5;  //seconds
-    config.rise_rate_threshold = 0x5A;  // 90
+    config.rise_rate_threshold = 85;
     config.update_interval_satellite = 120;
     config.max_distance = 0;
     config.min_latitude = 0;
@@ -446,8 +449,8 @@ void setup() {
   consoleSerial.println(F("*** Wait for serial cmd"));
   #endif
   for(uint8_t i=0; i<10; i++) {
-    digitalWrite(LED_BUILTIN, i%2);  // blink LEDs during programming phase
-    digitalWrite(LED_GPS, !(i%2));
+    digitalWrite(LED_RED, i%2);  // blink LEDs during programming phase
+    digitalWrite(LED_GREEN, !(i%2));
     
     uint8_t counter = 0;
     timer = millis();  // timer for end of message
@@ -455,7 +458,7 @@ void setup() {
       if ( (x = consoleSerial.read()) > -1) {
         //consoleSerial.print(F("$"));  // echo character for debug
         timer = millis();  // reset timer
-        MT_buffer[counter++] = (uint8_t)x;   // load each serial rx character into cmd buffer until timeout
+        MT_buffer[counter++] = (uint8_t)x;   // load each serial rx character into cmd buffer until timeout.  use sat buffer for this purpose
       }
     }
     if (counter>0) {  // if some bytes were read
@@ -479,8 +482,8 @@ void setup() {
     }
   } 
 
-  digitalWrite(LED_BUILTIN, LOW);  // make sure leds are off
-  digitalWrite(LED_GPS, LOW);
+  digitalWrite(LED_RED, LOW);  // make sure leds are off
+  digitalWrite(LED_GREEN, LOW);
 
   #ifdef DEBUG
      consoleSerial.print(F("*** CFG "));
@@ -650,7 +653,7 @@ void setup() {
   #endif
   base_pressure = 0;
   for (int i = 0; i < N; i++) {
-    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(LED_RED, HIGH);
   #ifdef BMP180
     sample[i] = bmp.readPressure();  // read pressure in Pa 
   #endif
@@ -661,7 +664,7 @@ void setup() {
   #ifdef MPR
     while ( (sample[i] = mpr.readIntPressure()) == 0L) {
       delay(50);
-      digitalWrite(LED_BUILTIN, LOW);  // bad sample, turn off LED and try again
+      digitalWrite(LED_RED, LOW);  // bad sample, turn off LED and try again
     }
   #endif MPR  
 
@@ -672,7 +675,7 @@ void setup() {
     base_pressure += sample[i];  // base_pressure is only used for arduino simple serial plotter
 
     //delay((T-8)/4);  // sample at about 2x the same rate as normal
-    digitalWrite(LED_BUILTIN, LOW);
+    digitalWrite(LED_RED, LOW);
     //delay((T-8)/4);
     #ifdef DEBUG
     consoleSerial.print(F("."));
@@ -706,25 +709,32 @@ void setup() {
 
   // enable SBD callback
   loopEnabled = true;
-    
+
+  // setup timer for LED blinking
+  OCR0A = 0xAF;
+  TIMSK0 |= _BV(OCIE0A);
 }
 
 void loop() {
 
   static uint32_t last_update_millis, this_update_millis;
   struct sat_message beacon;
-
-  ISBDCallback();  // if no message to send/receive then go ahead with loop
   
   // send/receive sat message here, which will repeatedly call ISBDCallback while idle
+
+  //  manually do callback at least once before sending a message; probe at least once per loop iteration. 
+  ISBDCallback();  
+  
   this_update_millis = (millis() % ((uint32_t)1000*(uint32_t)config.update_interval_satellite));
 
   // when it's update time or there is a message waiting for RX, build the TX status message : 
   // example message: *** SDB TX: 000B21107916E8B8192A07531FA6E1B99101D7E100000 size 31
 
+  // send message if:  1) ring pin active, 2) message waiting, 3)  satellite update time elapsed
   if ( (!digitalRead(RING_PIN))
         || (modem.getWaitingMessageCount() > 0)
         || (config.update_interval_satellite && (this_update_millis < last_update_millis))) {
+
     #ifdef DEBUG
     if (!digitalRead(RING_PIN)) {
         consoleSerial.println(F("*** SDB RING"));
@@ -794,11 +804,11 @@ void loop() {
       #endif
       status = modem.clearBuffers(ISBD_CLEAR_MO); // Clear MO buffer
       #ifdef DEBUG
-      if (status != ISBD_SUCCESS)
-      {
+      if (status != ISBD_SUCCESS) {
           Serial.print(F("*** SBD clearBuffers failed: error "));
           Serial.println(status);
       }
+      
       #endif
       //modem.sleep(); // Put the modem to sleep
       //modem.enable9603Npower(false); // Disable power for the 9603N
@@ -862,59 +872,43 @@ void loop() {
       }
     }
   }
-  
-/*  do {
-   char rxBuffer[100];
-   size_t bufferSize = sizeof(rxBuffer);
-   int status = modem.sendReceiveText(NULL, rxBuffer, bufferSize);
-   if (status != ISBD_SUCCESS)
-   {
-      // ...process error here... 
-      break;
-   }
-   if (bufferSize == 0)
-      break; // all done!
-      // ...process message in rxBuffer here... 
-  } while (modem.getWaitingMessageCount() > 0);
-*/
 
-  // update update time so we can detect overflow on next loop iteration
-  last_update_millis = this_update_millis;
-    
-  //ISBDCallback();  // if no message to send/receive then go ahead with loop
+  last_update_millis = this_update_millis;  // last_update_millis is continually updated; when this_update_millis rolls over we'll get the next message
+                                            // if update_interval_satellite is 120, you'll get message attempts at 120, 240, ..., n*120, ...
 }
 
 bool ISBDCallback() {
 
   static long rise_rate_running_sum;
   static unsigned long cut_time;
-  static unsigned long last_update_millis;
-  static unsigned long last_sample_millis;
-  static unsigned long loop_total;
-  static unsigned int loop_count;
+  static unsigned long last_update_millis, this_update_millis;  // serial debug update interval
+  static unsigned long last_sample_millis, this_sample_millis;  // pressure sampling interval
+  //static unsigned long loop_total;
+  //static unsigned int loop_count;
 
   #ifdef DEBUG_LOOP_INTERVAL
   static unsigned long loop_timer;
   loop_timer=millis();
   #endif
 
-  if (!loopEnabled) {
+  if (!loopEnabled) {  // this is here to disable the loop while talking to satellite in setup()
     return true;
   }
-  
-  //consoleSerial.println(F("Hi Mom!"));
 
   // read GPS string/update GPS structure here
   while (gpsSerial.available()) {
     char c = gpsSerial.read();
     //consoleSerial.print(c);
     if (gps.encode(c)) {
-      // process new gps info here
+      // process new gps info here, new sentence received
     }
   }
 
-  // sample pressure periodically by detecting rollover of period
-  unsigned long this_sample_millis = millis() % T;
+  //  is last gps message valid + recently updated?
+  gps_isvalid = (gps.location.isValid() && (gps.location.age() < 5000));
+
+  // sample pressure periodically by detecting rollover of period ///////////////////////////////////////////////////////////////////////////////////
+  this_sample_millis = millis() % T;
   if (this_sample_millis < last_sample_millis) {
 
   // read new pressure into circular buffer position n
@@ -1000,8 +994,9 @@ bool ISBDCallback() {
   // update pressure sample time so we can detect overflow on next loop iteration
   last_sample_millis = this_sample_millis;
 
-  uint32_t this_update_millis = (millis() % ((uint32_t)1000 * update_interval_console));
-  // send status message periodically via HW serial / satellite
+  // send status message periodically via debug serial ///////////////////////////////////////////////////////////////////////////////////////////
+
+  this_update_millis = (millis() % ((uint32_t)1000 * update_interval_console));
   if ( update_interval_console && (this_update_millis < last_update_millis)) {
     consoleSerial.print(millis() / (uint32_t)1000);
     consoleSerial.print(F(","));
@@ -1038,7 +1033,7 @@ bool ISBDCallback() {
     //consoleSerial.print(F(","));
     //consoleSerial.print((float)gps.speed.value()/100.0);
     //consoleSerial.print(F(","));
-    if (gps.location.isValid()) {
+    if (gps_isvalid) {
       consoleSerial.print(TinyGPSPlus::distanceBetween(gps.location.lat(),
           gps.location.lng(), launch_lat, launch_lon));
     //  consoleSerial.println(haversine(launch_lat, launch_lon, nmea.getLatitude(), nmea.getLongitude()));
@@ -1053,12 +1048,6 @@ bool ISBDCallback() {
   
   // update update time so we can detect overflow on next loop iteration
   last_update_millis = this_update_millis;
-  
-  // LED update
-  digitalWrite(LED_BUILTIN, (millis() % LED_period) < LED_duration);
-
-  // GPS LED update; blink if valid, otherwise off
-  digitalWrite(LED_GPS, ( gps.location.isValid() && (millis() % GPS_LED_period) < GPS_LED_duration));
 
   switch (active_state) {
     case PRELAUNCH:  // short flash, 1Hz
@@ -1082,8 +1071,6 @@ bool ISBDCallback() {
           consoleSerial.print(F("LONGITUDE: "));
           consoleSerial.println(launch_lon,6);
         #endif
-        // turn off GPS valid LED, because at this point it's too late to get a good launch coordinate.
-        //   ... and the device is flying away before the GPS was locked.  OOPS
       } else if ((config.letdown_delay < 0) && ((millis()/1000L) > (-1*config.letdown_delay))) {
         launch_time = 0;  // for negative letdown_delay, we delay letdown from "launch" at zero millis()
         LED_period = 500;  // long slow blink
@@ -1101,7 +1088,7 @@ bool ISBDCallback() {
         // update launch location if we have a lock
         // updating many times while in prelaunch mode means we have many bites at the apple to get a good gps location
         // altitude will be the altitude at which the filter detects a launch (in the air) but not far off
-        if (gps.location.isValid()) {
+        if (gps_isvalid) {
           launch_lat = gps.location.lat();  // millionths of degrees
           launch_lon = gps.location.lng();  // millionths of degrees
           launch_alt = gps.altitude.meters();  // altitude MSL in meters
@@ -1148,13 +1135,22 @@ bool ISBDCallback() {
         active_state = CUT_INIT;
         break;
       }
+      
       // check geofence here
-      if (gps.location.isValid()) {
+      if (gps_isvalid) {
+
+        // try to detect/correct launch w/o valid gps
+        if ( launch_lat == 0 ) {
+          launch_lat = gps.location.lat();  // millionths of degrees
+          launch_lon = gps.location.lng();  // millionths of degrees
+          launch_alt = gps.altitude.meters();  // altitude MSL in meters
+        }
         // compute distance and compare to max distance downrange
         if ( config.max_distance && (TinyGPSPlus::distanceBetween(gps.location.lat(),
           gps.location.lng(), launch_lat, launch_lon) > config.max_distance)) {
           active_state = CUT_INIT;
           break;
+        // check min/max lat/lon to see if limits breached
         }
         if ( config.max_latitude!=0 && ( ((uint32_t)(gps.location.lat()*(uint32_t)1000000)) > config.max_latitude)) {
           active_state = CUT_INIT;
@@ -1172,8 +1168,6 @@ bool ISBDCallback() {
           active_state = CUT_INIT;
           break; 
         }
-        
-        // compare lat/lon to lat/lon min and max
       }
       break;
 
@@ -1211,17 +1205,14 @@ bool ISBDCallback() {
     default:
       break;
   }
-
-  delay(1);
-
+  
   #ifdef DEBUG_LOOP_INTERVAL
-  unsigned long foo = millis()-loop_timer;
-  if (foo > 3) {
+  if (millis()-loop_timer > 3) {
     consoleSerial.println(millis()-loop_timer);
   }
   #endif
 
-  return (true);
+  return (true);   // returning false will terminate the SDB messages transmission early
 }
 
 #ifdef DEBUG_SDB
@@ -1236,7 +1227,20 @@ void ISBDDiagsCallback(IridiumSBD *device, char c)
 }
 #endif
 
+// ISR for LED blinking, called once a millisecond
+SIGNAL(TIMER0_COMPA_vect) {
+  uint32_t currentMillis = millis();
+  
+  // LED update
+  digitalWrite(LED_RED, (currentMillis % LED_period) < LED_duration);
 
+  // GPS LED update; blink if valid, otherwise off
+  digitalWrite(LED_GREEN, ( gps_isvalid && (currentMillis % GPS_LED_period) < GPS_LED_duration));
+  
+}
+
+
+// My beautiful function that isn't needed because TinyGPS++ already has it
 // distance between points on earth in meters
 // lat/lon in millionths of degrees (divide by 1,000,000 for degrees)
 /*double haversine(double lat1, double lon1, double lat2, double lon2) {
