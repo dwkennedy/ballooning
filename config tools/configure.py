@@ -130,17 +130,17 @@ def dump_config(cfg):
         print("max longitude: ignore")
 
 def unpack_config_struct(buffer):
-    config = struct.unpack_from('< HhHHHHHHIiiii', buffer, 3)
+    config = struct.unpack('< HhHHHHHHIiiii', buffer)
     return config
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    config_bytes = b'PRG' + build_config_struct()
+    config_bytes = build_config_struct()
     cfg = unpack_config_struct(config_bytes)
     dump_config(cfg)
 
-    cfgRegex = re.compile(b'\*\*\* CFG (.{72})')  # regex to find configuration from BAD output
+    cfgRegex = re.compile(b'\*\*\* CFG ([0-9A-Fa-f]{72})')  # regex to find configuration from BAD output
 
     print("")
     if (len(sys.argv)<2):
@@ -177,8 +177,8 @@ if __name__ == '__main__':
 
     try:
         for i in range(1,10):
-            print("sending " + str(config_bytes))
-            serialPort.write(config_bytes)
+            print("tx: " + str(b'PRG' + config_bytes))
+            serialPort.write(b'PRG' + config_bytes)
             for j in range(1,10):
                 foo = serialPort.readline()
                 if (foo):
@@ -193,28 +193,24 @@ if __name__ == '__main__':
         print("Programming success!")
 
     for i in range(1,10):
-        foo=serialPort.readline() # (serialPort.in_waiting)
-        if(foo):
-            print(foo.decode('UTF-8').rstrip())
-            dump = cfgRegex.search(bytes.fromhex(foo)) # look for CFG line
-            if(dump):
-                dump_config(dump)
-
-            sleep(0.100)
-        else:
-            sleep(1)
-
-    #print("->" + str(config_bytes))
-    #serialPort.write(config_bytes)
-    #for i in range(1,6):
-    #    print(serialPort.readline())
-    #    sleep(0.100)
-
-
-    #serialPort.write(b'END')
-    #for i in range(1,6):
-    #    print(serialPort.readline())
-    #    sleep(0.100)
+        foo = serialPort.readline()    # (serialPort.in_waiting)
+        print(foo.decode('UTF-8'))
+        try:
+            search = cfgRegex.search(foo)
+            if(search):
+                #print("found: " + str(search.groups()))
+                dump = search.group(1)  # regex searches the bytes
+                #print("group(1): " + str(dump))
+                dump = bytes.fromhex(dump.decode('UTF-8'))  # convert the ascii hex to bytes
+                #print("bytes: " + str(dump))
+                if(dump):
+                    cfg = unpack_config_struct(dump)   # unpack the bytes of the struct
+                    print("Configuration as read")
+                    print("---------------------")
+                    dump_config(cfg)  # dump the configuration in readable format
+        except:
+            print("something scrammed in regex/conversion to bytes/struct unpack!")
+            pass
 
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
