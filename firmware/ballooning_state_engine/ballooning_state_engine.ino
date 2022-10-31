@@ -372,10 +372,6 @@ void setup() {
   
     // avoid double setup and wait for LED test
   delay(6000);
-
-  // setup timer for LED blinking
-  OCR0A = 0xAF;
-  TIMSK0 |= _BV(OCIE0A);
   
   #ifdef DEBUG
     consoleSerial.println(F("\r\n*** Start setup()"));
@@ -713,7 +709,10 @@ void setup() {
 
   // enable SBD callback
   loopEnabled = true;
-    
+
+  // setup timer for LED blinking
+  OCR0A = 0xAF;
+  TIMSK0 |= _BV(OCIE0A);
 }
 
 void loop() {
