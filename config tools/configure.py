@@ -23,11 +23,27 @@ def build_config_struct():
     max_latitude = 0
     min_longitude = 0
     max_longitude = 0
-    if (1):   # lloyd noble drive test
+
+    if (0):   # lloyd noble drive test
         min_latitude = 35185821  # millionths of degree, ie 35.123456 = 35123456, 0=ignore
         max_latitude = 35188899
         min_longitude = -97446539
         max_longitude = -97442332
+
+    if (1):  # LEE configuration
+        unit_id = 1236
+        letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
+        letdown_duration = 15  # seconds
+        max_flight_duration = 60*60  # SECONDS, 0=ignore
+        cut_pressure = 50000  # Pascals, 0=ignore
+        cut_duration = 5000  # milliseconds
+        rise_rate_threshold = 85  # Pa/sec * conversion factor: NWC elevator is 100
+        update_interval_satellite = 120  # SECONDS, 0 = no update
+        max_distance = 0  # meters, 0=ignore
+        min_latitude = 43052242  # millionths of degrees, ie 35.123456 = 35123456, 0=ignore
+        max_latitude = 44011595
+        min_longitude = -76979028
+        max_longitude = -75519990
 
     # fix swapped min/max
     if (min_longitude > max_longitude):
@@ -114,17 +130,17 @@ def dump_config(cfg):
         print("max longitude: ignore")
 
 def unpack_config_struct(buffer):
-    config = struct.unpack_from('< HhHHHHHHIiiii', buffer, 3)
+    config = struct.unpack('< HhHHHHHHIiiii', buffer)
     return config
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    config_bytes = b'PRG' + build_config_struct()
+    config_bytes = build_config_struct()
     cfg = unpack_config_struct(config_bytes)
     dump_config(cfg)
 
-    cfgRegex = re.compile(b'\*\*\* CFG (.+)')  # regex to find configuration from BAD output
+    cfgRegex = re.compile(b'\*\*\* CFG ([0-9A-Fa-f]{72})')  # regex to find configuration from BAD output
 
     print("")
     if (len(sys.argv)<2):
@@ -161,8 +177,8 @@ if __name__ == '__main__':
 
     try:
         for i in range(1,10):
-            print("sending " + str(config_bytes))
-            serialPort.write(config_bytes)
+            print("tx: " + str(b'PRG' + config_bytes))
+            serialPort.write(b'PRG' + config_bytes)
             for j in range(1,10):
                 foo = serialPort.readline()
                 if (foo):
@@ -177,28 +193,24 @@ if __name__ == '__main__':
         print("Programming success!")
 
     for i in range(1,10):
-        foo=serialPort.readline() # (serialPort.in_waiting)
-        if(foo):
-            print(foo.decode('UTF-8').rstrip())
-            dump = cfgRegex.search(foo) # look for CFG line
-            if(dump):
-                dump_config(dump)
-
-            sleep(0.100)
-        else:
-            sleep(1)
-
-    #print("->" + str(config_bytes))
-    #serialPort.write(config_bytes)
-    #for i in range(1,6):
-    #    print(serialPort.readline())
-    #    sleep(0.100)
-
-
-    #serialPort.write(b'END')
-    #for i in range(1,6):
-    #    print(serialPort.readline())
-    #    sleep(0.100)
+        foo = serialPort.readline()    # (serialPort.in_waiting)
+        print(foo.decode('UTF-8'))
+        try:
+            search = cfgRegex.search(foo)
+            if(search):
+                #print("found: " + str(search.groups()))
+                dump = search.group(1)  # regex searches the bytes
+                #print("group(1): " + str(dump))
+                dump = bytes.fromhex(dump.decode('UTF-8'))  # convert the ascii hex to bytes
+                #print("bytes: " + str(dump))
+                if(dump):
+                    cfg = unpack_config_struct(dump)   # unpack the bytes of the struct
+                    print("Configuration as read")
+                    print("---------------------")
+                    dump_config(cfg)  # dump the configuration in readable format
+        except:
+            print("something scrammed in regex/conversion to bytes/struct unpack!")
+            pass
 
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
