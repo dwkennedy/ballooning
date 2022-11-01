@@ -24,13 +24,22 @@ def build_config_struct():
     min_longitude = 0
     max_longitude = 0
 
-    if (0):   # lloyd noble drive test
+    if (1):   # lloyd noble drive test
+        unit_id = 1235
+        letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
+        letdown_duration = 1  # seconds
+        max_flight_duration = 300  # SECONDS, 0=ignore
+        cut_pressure = 0  # Pascals, 0=ignore
+        cut_duration = 10000  # milliseconds
+        rise_rate_threshold = 85  # Pa/sec * conversion factor: NWC elevator is 100
+        update_interval_satellite = 60  # SECONDS, 0 = no update
+        max_distance = 0  # meters, 0=ignore
         min_latitude = 35185821  # millionths of degree, ie 35.123456 = 35123456, 0=ignore
         max_latitude = 35188899
         min_longitude = -97446539
         max_longitude = -97442332
 
-    if (1):  # LEE configuration
+    if (0):  # LEE configuration
         unit_id = 1236
         letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
         letdown_duration = 15  # seconds
