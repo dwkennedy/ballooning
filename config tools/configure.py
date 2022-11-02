@@ -56,7 +56,7 @@ def build_config_struct():
 
     if (1):  # Mike static test configuration
         unit_id = 1237
-        letdown_delay = 60  # positive: seconds after launch detect: negative, seconds after power on
+        letdown_delay = -60  # positive: seconds after launch detect: negative, seconds after power on
         letdown_duration = 1  # seconds
         max_flight_duration = 120  # SECONDS, 0=ignore
         cut_pressure = 0  # Pascals, 0=ignore
