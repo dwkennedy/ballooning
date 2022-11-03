@@ -5,14 +5,64 @@ Use a usb to 3.3V TTL FTDI serial cable like https://www.sparkfun.com/products/9
 
 For example, if the FTDI serial device is connected to COM20:
 
+'''text
 $ python configure.py COM20
 
-Hex string for Rockblock: 5052470101e2ff05003c00000088135500780000000000000000000000000000000000feffff7f
-Connect cable and turn on device now
+C:\Users\micro\anaconda3\python.exe "C:/Users/micro/Documents/ballooning/config tools/configure.py" 
+unit_id: 1237
+letdown_delay: 60 seconds after power on
+letdown_duration: 1 seconds
+max_flight_duration: 120 seconds
+cut_pressure: no limit
+cut_duration: 3000 milliseconds
+rise_rate_threshold: 85
+update_interval_satellite: 120
+max_distance: ignore
+min_latitude: ignore
+max latitude: ignore
+min longitude: ignore
+max longitude: ignore
 
-.
-.
-.
+Hex string for RockBLOCK: d504c4ff010078000000b80b550078000000000000000000000000000000000000000000
+Connect cable and turn on device now
+*** CFG 00001E0005003C000000B80B550078000000000000000000000000000000000000000000
+*** Start iridium modem
+tx: b'PRG\xd5\x04\xc4\xff\x01\x00x\x00\x00\x00\xb8\x0bU\x00x\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+
+*** Start setup()
+*** MOTOR ON
+*** MOTOR OFF
+*** CUTTER ON
+*** CUTTER OFF
+tx: b'PRG\xd5\x04\xc4\xff\x01\x00x\x00\x00\x00\xb8\x0bU\x00x\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+*** EEPROM 00001E0005003C000000B80B550078000000000000000000000000000000000000000000
+*** Wait for serial cmd
+ERR
+tx: b'PRG\xd5\x04\xc4\xff\x01\x00x\x00\x00\x00\xb8\x0bU\x00x\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+*** PRG D504C4FF010078000000B80B550078000000000000000000000000000000000000000000
+OK
+Programming success!
+END
+
+*** CFG D504C4FF010078000000B80B550078000000000000000000000000000000000000000000
+
+Configuration as read
+---------------------
+unit_id: 1237
+letdown_delay: 60 seconds after power on
+letdown_duration: 1 seconds
+max_flight_duration: 120 seconds
+cut_pressure: no limit
+cut_duration: 3000 milliseconds
+rise_rate_threshold: 85
+update_interval_satellite: 120
+max_distance: ignore
+min_latitude: ignore
+max latitude: ignore
+min longitude: ignore
+max longitude: ignore
+*** Start iridium modem
+'''
 
 
 You should see an "OK" response after the CFG string is sent.  The hex string is used to send a configuration
