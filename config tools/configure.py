@@ -1,7 +1,5 @@
-# This is a sample Python script.
+# This a program to configure the ballooning device
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 import struct
 import serial
 from time import sleep
