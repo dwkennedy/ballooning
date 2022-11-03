@@ -1,7 +1,8 @@
 This is a python program to send programming sequences over a serial port to the device
-requirement: pip install pyserial
 
-Use a usb to 3.3V TTL FTDI serial cable like https://www.sparkfun.com/products/9717
+to install dependency: pip install pyserial
+
+Use a usb to ***3.3V TTL*** FTDI serial cable like https://www.sparkfun.com/products/9717
 
 For example, if the FTDI serial device is connected to COM20:
 
