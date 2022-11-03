@@ -9,7 +9,6 @@ For example, if the FTDI serial device is connected to COM20:
 ```text
 $ python configure.py COM20
 
-C:\Users\micro\anaconda3\python.exe "C:/Users/micro/Documents/ballooning/config tools/configure.py" 
 unit_id: 1237
 letdown_delay: 60 seconds after power on
 letdown_duration: 1 seconds
