@@ -33,7 +33,6 @@ be changed in flight depending on wind conditions aloft.
 Continuing with the program output:
 ```text
 Connect cable and turn on device now
-tx: b'PRG\xd5\x04\xc4\xff\x01\x00x\x00\x00\x00\xb8\x0bU\x00x\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
 
 *** Start setup()
 *** MOTOR ON
