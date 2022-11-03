@@ -784,7 +784,7 @@ void loop() {
       MT_buffer_size = sizeof(MT_buffer); // always reset this before receive; message size is returned in this variable
       status = modem.sendReceiveSBDBinary((uint8_t *)&beacon, sizeof(beacon), MT_buffer, MT_buffer_size); // TX/RX a message in binary
       #ifdef DEBUG
-      if (MT_buffer_size>0) {
+      if ((MT_buffer_size>0) && (status == 0)) {
         consoleSerial.print(F("*** SDB RX (hex): "));
         print_hex_buffer(consoleSerial, MT_buffer, MT_buffer_size);
         consoleSerial.print(F(" size "));
@@ -827,7 +827,7 @@ void loop() {
 
     // process incoming message
 
-    if (MT_buffer_size > 0) {
+    if ((MT_buffer_size > 0) && (status == 0)) {
       //PNG command:  return bytes 
       if (!strncmp(MT_buffer, "PNG", 3)) {
         //  send MT_buffer back
