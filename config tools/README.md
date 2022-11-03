@@ -24,9 +24,15 @@ min longitude: ignore
 max longitude: ignore
 
 Hex string for RockBLOCK: d504c4ff010078000000b80b550078000000000000000000000000000000000000000000
+```
+The "Hex string for RockBlock" is the hex message used
+to send a configuration to a device over the satellite connection.  This could be useful to change the frequency of transmissions (or
+shut them off entirely) after the device has landed to save message charges.  Or, the cut down parameters could
+be changed in flight depending on wind conditions aloft.
+
+Continuing with the program output:
+```text
 Connect cable and turn on device now
-*** CFG 00001E0005003C000000B80B550078000000000000000000000000000000000000000000
-*** Start iridium modem
 tx: b'PRG\xd5\x04\xc4\xff\x01\x00x\x00\x00\x00\xb8\x0bU\x00x\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
 
 *** Start setup()
@@ -61,11 +67,12 @@ min_latitude: ignore
 max latitude: ignore
 min longitude: ignore
 max longitude: ignore
-*** Start iridium modem
+
 ```
+In the example above, the desired configuration to be sent to the device is printed, followed by a trace of the programming dialog.
+You should see an "OK" response after the CFG string is sent.  
 
+After the device is programmed it reads the EEPROM and returns the device configuration (*** CFG XXXXX...)  The configuration string is then
+decoded and displayed so you can verify that the configuration has been sucessfully updated.  I suggest printing the configuration and keeping
+a copy with the device so you know how it's programmed without having to hook it up and/or reprogram it.
 
-You should see an "OK" response after the CFG string is sent.  The hex string is used to send a configuration
-to a device over the satellite connection.  This could be useful to change the frequency of transmissions (or
-shut them off entirely) after the device has landed to save message charges.  Also, cut down parameters can
-be changed in flight.
