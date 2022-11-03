@@ -512,7 +512,7 @@ void setup() {
   
   // Begin satellite modem operation
   #ifdef DEBUG
-  consoleSerial.println(F("*** Start iridium modem"));
+  consoleSerial.println(F("*** Start Iridium modem"));
   #endif
   loopEnabled = false;  // disable SBD callback during setup
   modem.setPowerProfile(IridiumSBD::DEFAULT_POWER_PROFILE);  // high power
