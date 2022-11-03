@@ -5,7 +5,7 @@ Use a usb to 3.3V TTL FTDI serial cable like https://www.sparkfun.com/products/9
 
 For example, if the FTDI serial device is connected to COM20:
 
-'''text
+```text
 $ python configure.py COM20
 
 C:\Users\micro\anaconda3\python.exe "C:/Users/micro/Documents/ballooning/config tools/configure.py" 
@@ -62,7 +62,7 @@ max latitude: ignore
 min longitude: ignore
 max longitude: ignore
 *** Start iridium modem
-'''
+```
 
 
 You should see an "OK" response after the CFG string is sent.  The hex string is used to send a configuration
