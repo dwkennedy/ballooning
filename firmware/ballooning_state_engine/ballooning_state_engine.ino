@@ -856,7 +856,8 @@ void loop() {
             print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
             consoleSerial.println();
           #endif
-          memcpy((uint8_t *)&config, MT_buffer+3, sizeof(config));  // update MT_buffer to include current config
+          //memcpy((uint8_t *)&config, MT_buffer+3, sizeof(config));  // update MT_buffer to include current config
+          memcpy(MT_buffer+3, (uint8_t *)&config, sizeof(config));  // update MT_buffer to include current config
           status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size+sizeof(config));  // TX CFG+binary configuration structure
           #ifdef DEBUG
             consoleSerial.print(F("*** SBD TX status: "));
