@@ -494,6 +494,22 @@ void setup() {
   gpsSerial.begin(9600);  // software serial to gps receiver
   gpsSerial.listen();
 
+#ifdef MPL3115A2
+  #ifdef DEBUG
+  consoleSerial.println(F("*** Start MPL3115A2"));
+  #endif
+  if (!baro.begin()) {
+    consoleSerial.println(F("*** Cannot connect to MPL3115A2, resetting"));
+    error_flash(3,3);
+    resetFunc();  // go back to setup()
+  }
+  baro.setMode(MPL3115A2_BAROMETER);
+#endif
+
+//  #ifdef DEBUG
+//  consoleSerial.println(F("*** Connected to pressure sensor"));
+//  #endif
+  
   // Begin satellite modem operation
   #ifdef DEBUG
   consoleSerial.println(F("*** Start iridium modem"));
@@ -610,18 +626,7 @@ void setup() {
   }
 #endif
 
-#ifdef MPL3115A2
-  while(!baro.begin()) {
-    consoleSerial.println(F("*** Cannot connect to MPL3115A2, resetting"));
-    error_flash(3,3);
-    resetFunc();  // go back to setup()
-  }
-  baro.setMode(MPL3115A2_BAROMETER);
-#endif
 
-  #ifdef DEBUG
-  consoleSerial.println(F("*** Connected to pressure sensor"));
-  #endif
 
   #ifdef DEBUG_PLOT   // print out a bunch of zeros for the sake of simple arduino serial plotter
   for (int i = 0; i < 500; i++) {
