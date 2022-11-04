@@ -72,7 +72,7 @@ def unpack_config_struct(buffer):
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
 
-    cfgRegex = re.compile(b'\*\*\* CFG ([0-9A-Fa-f]{72})')  # regex to find configuration from BAD output
+    cfgRegex = re.compile(b'\*\*\* EEPROM ([0-9A-Fa-f]{72})')  # regex to find configuration from BAD output
 
     print("")
     if (len(sys.argv)<2):
@@ -98,16 +98,16 @@ if __name__ == '__main__':
     while (serialPort.in_waiting<=0):
         None
 
-    sleep(2.0)
+    #sleep(2.0)
     # purge all arriving characters
-    while (serialPort.in_waiting):
+    #while (serialPort.in_waiting):
         #print(serialPort.read(serialPort.in_waiting))
-        print(serialPort.readline().decode('UTF-8').rstrip())
+        #print(serialPort.readline().decode('UTF-8').rstrip())
         #sleep(0.100)
 
     for i in range(1,10):
         foo = serialPort.readline()    # (serialPort.in_waiting)
-        print(foo.decode('UTF-8'))
+        print(foo.decode('UTF-8').rstrip())
         try:
             search = cfgRegex.search(foo)
             if(search):

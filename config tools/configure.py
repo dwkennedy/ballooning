@@ -8,12 +8,13 @@ import re
 
 def build_config_struct():
 
-    unit_id = 1235
+# elevator test; letdown 30 sec after launch, then flight ends 60 after launch
+    unit_id = 1240
     letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
-    letdown_duration = 1  # seconds
-    max_flight_duration = 300  # SECONDS, 0=ignore
+    letdown_duration = 5  # seconds
+    max_flight_duration = 60  # SECONDS, 0=ignore
     cut_pressure = 0      # Pascals, 0=ignore
-    cut_duration = 10000  # milliseconds
+    cut_duration = 5000  # milliseconds
     rise_rate_threshold = 85  # Pa/sec * conversion factor: NWC elevator is 100
     update_interval_satellite = 60  # SECONDS, 0 = no update
     max_distance = 0  # meters, 0=ignore
@@ -52,7 +53,7 @@ def build_config_struct():
         min_longitude = -76979028
         max_longitude = -75519990
 
-    if (1):  # Mike static test configuration
+    if (0):  # Mike static test configuration
         unit_id = 1237
         letdown_delay = -60  # positive: seconds after launch detect: negative, seconds after power on
         letdown_duration = 1  # seconds
