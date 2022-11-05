@@ -217,7 +217,7 @@ if __name__ == '__main__':
 
     for i in range(1,10):
         foo = serialPort.readline()    # (serialPort.in_waiting)
-        print(foo.decode('UTF-8'))
+        print(foo.decode('UTF-8').rstrip())
         try:
             search = cfgRegex.search(foo)
             if(search):
