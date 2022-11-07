@@ -5,10 +5,21 @@ import serial
 from time import sleep
 import sys
 import re
+import json
+import datetime
+import requests
+
+global serialnumber
+global imei
 
 def build_config_struct():
 
 # elevator test; letdown 30 sec after launch, then flight ends 60 after launch
+    global serialnumber
+    global imei
+
+    serialnumber = 209879
+    imei = "300434066196920"
     unit_id = 1240
     letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
     letdown_duration = 5  # seconds
@@ -159,6 +170,7 @@ def unpack_config_struct(buffer):
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
+
     config_bytes = build_config_struct()
     cfg = unpack_config_struct(config_bytes)
     dump_config(cfg)
@@ -171,11 +183,11 @@ if __name__ == '__main__':
     else:
         port = sys.argv[1]
 
-    print("Hex string for RockBLOCK: " + b"CFG".hex() + config_bytes.hex())
+    print("Hex string for programming RockBLOCK: " + b"CFG".hex() + config_bytes.hex())
 
     try:
         serialPort = serial.Serial(port=port, baudrate=19200,
-                               bytesize=8, timeout=2, stopbits=serial.STOPBITS_ONE)
+                               bytesize=8, timeout=0.5, stopbits=serial.STOPBITS_ONE)
     except Exception as e:
         print(e)
         print("Check serial port in device manager!")
@@ -214,6 +226,7 @@ if __name__ == '__main__':
     except StopIteration:
         serialPort.write(b'END')
         print("Programming success!")
+        print("Reading back configuration from device")
 
     for i in range(1,10):
         foo = serialPort.readline()    # (serialPort.in_waiting)
@@ -222,19 +235,42 @@ if __name__ == '__main__':
             search = cfgRegex.search(foo)
             if(search):
                 #print("found: " + str(search.groups()))
-                dump = search.group(1)  # regex searches the bytes
+                hexbytes = search.group(1)  # regex searches the bytes; hexbytes is bytes format, of ascii values encoding hex
                 #print("group(1): " + str(dump))
-                dump = bytes.fromhex(dump.decode('UTF-8'))  # convert the ascii hex to bytes
-                #print("bytes: " + str(dump))
-                if(dump):
-                    cfg = unpack_config_struct(dump)   # unpack the bytes of the struct
-                    print("Configuration as read")
+                cfgbytes = bytes.fromhex(hexbytes.decode('UTF-8'))  # convert the ascii hex bytes to byte string (00-FF values in each position)
+                if(cfgbytes):
+                    cfg = unpack_config_struct(cfgbytes)   # unpack the bytes of the struct into cfg tuple
+                    print("\r\nConfiguration as read")
                     print("---------------------")
-                    dump_config(cfg)  # dump the configuration in readable format
+                    dump_config(cfg)  # dump the configuration tuple in readable format
+                    break
         except:
             print("something scrammed in regex/conversion to bytes/struct unpack!")
             pass
 
+    if ('hexbytes' in locals()):
+        print("\r\nSubmitting configuration as read back from device to database")
+        data = b'CFG'.hex() + hexbytes.decode('UTF-8')  # this is the data JSON that comes from rock 7 to the web server
+        transmit_time = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        payload = {'data': data,
+                'imei': imei,
+                'serial': serialnumber,
+                'device_type': 'PC',
+                'transmit_time': transmit_time,
+                'momsn': 0,
+                'iridium_latitude': 0,
+                'iridium_longitude': 0,
+                'iridium_cep': 0
+                }
+        #print(payload)
+        try:
+            result = requests.post("http://kennedy.tw:8000/waypoint", json=payload)
+            print("server response (200=SUCCESS): " + str(result.status_code))
+            #print(result.json())
+        except Exception as e:
+            print("server error: " + str(e))
+    else:
+        print("Configuration not read back from device, please try again")
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
 """
