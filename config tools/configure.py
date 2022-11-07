@@ -171,7 +171,7 @@ if __name__ == '__main__':
     else:
         port = sys.argv[1]
 
-    print("Hex string for RockBLOCK: " + config_bytes.hex())
+    print("Hex string for RockBLOCK: " + b"CFG".hex() + config_bytes.hex())
 
     try:
         serialPort = serial.Serial(port=port, baudrate=19200,
