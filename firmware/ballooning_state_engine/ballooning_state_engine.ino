@@ -529,6 +529,20 @@ void setup() {
     }
   }
 
+  #ifdef DEBUG
+  // Get the IMEI
+  char IMEI[16];
+  status = modem.getIMEI(IMEI, sizeof(IMEI));
+  if (status != ISBD_SUCCESS)
+  {
+     consoleSerial.print(F("*** getIMEI failed: error "));
+     consoleSerial.println(status);
+     return;
+  }
+  consoleSerial.print(F("*** IMEI is "));
+  consoleSerial.println(IMEI);
+  #endif
+  
   #ifdef DEBUG_SDB
   // Print the firmware revision
   char version[12];
@@ -541,18 +555,6 @@ void setup() {
   }
   consoleSerial.print(F("*** Firmware Version is "));
   consoleSerial.println(version);
-
-  // Get the IMEI
-  char IMEI[16];
-  status = modem.getIMEI(IMEI, sizeof(IMEI));
-  if (status != ISBD_SUCCESS)
-  {
-     consoleSerial.print(F("*** getIMEI failed: error "));
-     consoleSerial.println(status);
-     return;
-  }
-  consoleSerial.print(F("*** IMEI is "));
-  consoleSerial.println(IMEI);
 
   // Check the signal quality.
   // This returns a number between 0 and 5.
