@@ -100,6 +100,8 @@ Adafruit_MPL3115A2 baro;
 
 // battery voltage analog input
 #define BATT_SENSE A3
+// voltage at which to skip turn-on motor/cutter pulse
+#define BATT_VOLTAGE_THRESHOLD (8.5)
 
 // length of filter (N must be odd)
 #define N (33)
@@ -333,6 +335,10 @@ void error_flash(uint8_t flashes, uint8_t repeats) {
   }
 }
 
+float read_batt_voltage() {
+  return(analogRead(BATT_SENSE)/77.57575758);
+}
+
 void setup() {
 
   // configure control ports and make sure they're off
@@ -382,16 +388,25 @@ void setup() {
   digitalWrite(LED_GREEN, LOW);   // turn on GREEN LED
   
   #ifdef DEBUG
+  if ( read_batt_voltage() > BATT_VOLTAGE_THRESHOLD ) { 
+    consoleSerial.print(F("*** BATT "));
+    consoleSerial.println(read_batt_voltage());
     consoleSerial.println(F("*** MOTOR ON"));
     digitalWrite(MOTOR, HIGH);  // turn on motor
     delay(50);
+    consoleSerial.print(F("*** BATT "));
+    consoleSerial.println(read_batt_voltage());
     digitalWrite(MOTOR, LOW);  // turn off motor
     consoleSerial.println(F("*** MOTOR OFF"));
     consoleSerial.println(F("*** CUTTER ON"));
     digitalWrite(CUTTER, HIGH);  // turn on cutter
     delay(100);
+    consoleSerial.print(F("*** BATT "));
+    consoleSerial.println(read_batt_voltage());
     digitalWrite(CUTTER, LOW);  // turn off cutter
     consoleSerial.println(F("*** CUTTER OFF"));
+  }
+  
   #endif
 
   #ifdef MPR
