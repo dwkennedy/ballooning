@@ -255,7 +255,7 @@ if __name__ == '__main__':
         payload = {'data': data,
                 'imei': imei,
                 'serial': serialnumber,
-                'device_type': 'PC',
+                'device_type': 'SERIAL',
                 'transmit_time': transmit_time,
                 'momsn': 0,
                 'iridium_latitude': 0,
