@@ -276,17 +276,13 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       consoleSerial.print(F("*** LET "));
       consoleSerial.println(config.letdown_duration);
       #endif
-      if (active_state == SETUP) {
-        timer = millis();
-        while ( ((millis()-timer)/(uint32_t)1000) < config.letdown_duration) {
-          digitalWrite(LED_RED, LOW);
-          digitalWrite(LED_GREEN, LOW);
-          digitalWrite(MOTOR, HIGH);
-        }
-        digitalWrite(MOTOR, LOW);
-      } else {
-        active_state = LETDOWN_INIT;
-      }
+      launch_time = millis()-config.letdown_delay*1000L;
+      //while ( ((millis()-timer)/(uint32_t)1000) < config.letdown_duration) {
+      //    digitalWrite(LED_RED, LOW);
+      //    digitalWrite(LED_GREEN, LOW);
+      //    digitalWrite(MOTOR, HIGH);
+      //digitalWrite(MOTOR, LOW);
+      active_state = LETDOWN_INIT;
       return(1);
     }
     

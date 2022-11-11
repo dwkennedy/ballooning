@@ -20,14 +20,14 @@ def build_config_struct():
 
     serialnumber = 209879
     imei = "300434066196920"
-    unit_id = 1240
+    unit_id = 0xEEEE
     letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
     letdown_duration = 5  # seconds
-    max_flight_duration = 60  # SECONDS, 0=ignore
+    max_flight_duration = 0  # SECONDS, 0=ignore
     cut_pressure = 0      # Pascals, 0=ignore
-    cut_duration = 5000  # milliseconds
+    cut_duration = 10000  # milliseconds
     rise_rate_threshold = 85  # Pa/sec * conversion factor: NWC elevator is 100
-    update_interval_satellite = 60  # SECONDS, 0 = no update
+    update_interval_satellite = 120  # SECONDS, 0 = no update
     max_distance = 0  # meters, 0=ignore
     min_latitude = 0  # millionths of degrees, ie 35.123456 = 35123456, 0=ignore
     max_latitude = 0
@@ -49,7 +49,7 @@ def build_config_struct():
         min_longitude = -97446539
         max_longitude = -97442332
 
-    if (1):  # LEE configuration
+    if (0):  # LEE configuration
         unit_id = 1240
         letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
         letdown_duration = 15  # seconds
@@ -250,7 +250,9 @@ if __name__ == '__main__':
 
     if ('hexbytes' in locals()):
         print("\r\nSubmitting configuration as read back from device to database")
-        data = b'CFG'.hex() + hexbytes.decode('UTF-8')  # this is the data JSON that comes from rock 7 to the web server
+        # goofed up by bug in CFG code in firmware, fix later DWK
+        #data = b'CFG'.hex() + hexbytes.decode('UTF-8')  # this is the data JSON that comes from rock 7 to the web server
+        data = hexbytes.decode('UTF-8') + b'\x00\x00\x00'.hex()  # this is the data JSON that comes from rock 7 to the web server
         transmit_time = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         payload = {'data': data,
                 'imei': imei,
@@ -266,7 +268,7 @@ if __name__ == '__main__':
         try:
             result = requests.post("http://kennedy.tw:8000/waypoint", json=payload)
             print("server response (200=SUCCESS): " + str(result.status_code))
-            #print(result.json())
+            #print(result.json()) +
         except Exception as e:
             print("server error: " + str(e))
     else:
