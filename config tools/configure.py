@@ -49,8 +49,8 @@ def build_config_struct():
         min_longitude = -97446539
         max_longitude = -97442332
 
-    if (0):  # LEE configuration
-        unit_id = 1236
+    if (1):  # LEE configuration
+        unit_id = 1240
         letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
         letdown_duration = 15  # seconds
         max_flight_duration = 60*60  # SECONDS, 0=ignore

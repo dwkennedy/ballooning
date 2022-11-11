@@ -866,7 +866,7 @@ void loop() {
           }
         #endif
       } else {
-        if (!strncmp(MT_buffer, "CFG", 3)) {
+        if ((MT_buffer_size == 3) && !strncmp(MT_buffer, "CFG", 3)) {
           // send CFG+configuration string back   
           #ifdef DEBUG
             consoleSerial.print(F("*** CFG received, returning "));
@@ -875,6 +875,7 @@ void loop() {
           #endif
           //memcpy((uint8_t *)&config, MT_buffer+3, sizeof(config));  // update MT_buffer to include current config
           memcpy(MT_buffer+3, (uint8_t *)&config, sizeof(config));  // update MT_buffer to include current config
+          // forgot to send CFG header, please fix later DWK
           status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size+sizeof(config));  // TX CFG+binary configuration structure
           #ifdef DEBUG
             consoleSerial.print(F("*** SBD TX status: "));
