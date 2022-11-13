@@ -35,6 +35,8 @@ def build_config_struct():
     max_longitude = 0
 
     if (0):   # lloyd noble drive test
+        serialnumber = 209879
+        imei = "300434066196920"
         unit_id = 1235
         letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
         letdown_duration = 1  # seconds
@@ -50,6 +52,8 @@ def build_config_struct():
         max_longitude = -97442332
 
     if (0):  # LEE configuration
+        serialnumber = 209879
+        imei = "300434066196920"
         unit_id = 1240
         letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
         letdown_duration = 15  # seconds
@@ -65,6 +69,8 @@ def build_config_struct():
         max_longitude = -75519990
 
     if (0):  # Mike static test configuration
+        serialnumber = 209879
+        imei = "300434066196920"
         unit_id = 1237
         letdown_delay = -60  # positive: seconds after launch detect: negative, seconds after power on
         letdown_duration = 1  # seconds
