@@ -246,12 +246,18 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
     consoleSerial.write(':');
     consoleSerial.println(buffer_size);
     #endif
+
+    // CUT command: CUTXX (5 bytes), XX is duration in milliseconds
+    if ((buffer_size == 5) && !strncmp(buffer, "CUT", 3)) {
+      config.cut_duration = (uint16_t)*(buffer+3) + 0x100*(uint16_t)*(buffer+4);
+      buffer_size = 3;
+      // fall through to CUT command
+    }
     
     // CUT command:  CUT (3 bytes)
-    //if ((buffer_size == 5) && !strncmp(buffer, "CUT", 3) && !strncmp(buffer+3, config.unit_id, 2)) {
-    if ((buffer_size == 3) && !strncmp(buffer, "CUT", 3) ) {
+    if ((buffer_size == 3) && !strncmp(buffer, "CUT", 3)) {
       #ifdef DEBUG
-      consoleSerial.print(F("*** CUT "));
+      consoleSerial.print(F("*** CMD CUT "));
       consoleSerial.println(config.cut_duration);
       #endif
       // do cut stuff here
@@ -269,14 +275,21 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       return(1);  // good command status
     }
 
+    // LET command: LETXX (5 bytes), XX is duration in seconds
+    if ((buffer_size == 5) && !strncmp(buffer, "LET", 3)) {
+      config.letdown_duration = (uint16_t)*(buffer+3) + 0x100*(uint16_t)*(buffer+4);
+      buffer_size = 3;
+      // fall through to LET command
+    }
+    
     // LET command: LET (3 bytes)
-    else if ((buffer_size == 3) && !strncmp(buffer, "LET", 3)) {
+    if ((buffer_size == 3) && !strncmp(buffer, "LET", 3)) {
       // do letdown stuff here  
       #ifdef DEBUG
       consoleSerial.print(F("*** LET "));
       consoleSerial.println(config.letdown_duration);
       #endif
-      launch_time = millis()-config.letdown_delay*1000L;
+      launch_time = millis()-abs(config.letdown_delay)*1000L;
       //while ( ((millis()-timer)/(uint32_t)1000) < config.letdown_duration) {
       //    digitalWrite(LED_RED, LOW);
       //    digitalWrite(LED_GREEN, LOW);
@@ -287,7 +300,7 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
     }
     
     // PRG commmand:  store configuration structure to EEPROM
-    else if ((buffer_size == (36+3)) && !strncmp(buffer, "PRG", 3)) {
+    if ((buffer_size == (36+3)) && !strncmp(buffer, "PRG", 3)) {
       #ifdef DEBUG
       consoleSerial.print(F("*** PRG "));
       print_hex_buffer(consoleSerial, buffer+3, buffer_size-3);
@@ -298,12 +311,43 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       memcpy((uint8_t *)&config, buffer+3, sizeof(config));  // update config in memory
       EEPROM.put(EEPROM_BASE_ADDR, config);  // write new config to EEPROM
       // EEPROM.get(EEPROM_BASE_ADDR, config);  // read back from EEPROM
-      return(1);
+      //return(1);
+
+       MT_buffer_size = 3;
+       memcpy(buffer,"CFG",3);
+      // fall through to CFG command to return new config
     }
+    
+    if ((MT_buffer_size == 3) && !strncmp(MT_buffer, "CFG", 3)) {
+      // send CFG+configuration string back   
+      #ifdef DEBUG
+        consoleSerial.print(F("*** CFG TX "));
+        print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
+        consoleSerial.println();
+      #endif
+      memcpy(MT_buffer+3, (uint8_t *)&config, sizeof(config));  // update MT_buffer to include current config
+      // forgot to send CFG header, please fix later DWK
+      // this is right ==> status = modem.sendSBDBinary((uint8_t *)&MT_buffer[0], 3+sizeof(config));  // TX CFG+binary configuration structure
+      status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size+sizeof(config));  // TX CFG+binary configuration structure
+      #ifdef DEBUG
+        consoleSerial.print(F("*** SBD TX status: "));
+        consoleSerial.println(status);
+        // Clear the Mobile Originated message buffer to avoid re-sending the message during subsequent loops
+        consoleSerial.println(F("*** SBD Clearing the MO buffer"));
+      #endif
+      status = modem.clearBuffers(ISBD_CLEAR_MO); // Clear MO buffer
+      #ifdef DEBUG
+        if (status != ISBD_SUCCESS) {
+          Serial.print(F("*** SBD clearBuffers failed: error "));
+          Serial.println(status);
+        }
+      #endif
+      return(1);
+    }    
 
     // UPD command:  change satellite update interval to xx seconds
-    else if ((buffer_size == 5) && !strncmp(buffer, "UPD", 3)) {
-      config.update_interval_satellite = (uint16_t)*(buffer+3);
+    if ((buffer_size == 5) && !strncmp(buffer, "UPD", 3)) {
+      config.update_interval_satellite = (uint16_t)*(buffer+3) + 0x100*(uint16_t)*(buffer+4);
       #ifdef DEBUG
       consoleSerial.print(F("*** UPD "));
       consoleSerial.print(config.update_interval_satellite);
@@ -312,7 +356,7 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       return(1);
     }
 
-    else if ((buffer_size==3) && !strncmp(buffer, "END", 3)) {
+    if ((buffer_size==3) && !strncmp(buffer, "END", 3)) {
       return(2);   // exit serial command mode
     }
     
@@ -440,18 +484,18 @@ void setup() {
     consoleSerial.println(F("*** Initializing EEPROM"));
     #endif
     config.unit_id = 0;
-    config.letdown_delay = 30;  // seconds; positive: delay after launch detect, negative: delay after power on
+    config.letdown_delay = -30;  // seconds; positive: delay after launch detect, negative: delay after power on
     config.cut_duration = 3000;  // milliseconds
-    config.max_flight_duration = 60;
+    config.max_flight_duration = 0;
     config.cut_pressure = 0;
-    config.letdown_duration = 5;  //seconds
+    config.letdown_duration = 2;  //seconds
     config.rise_rate_threshold = 85;
-    config.update_interval_satellite = 120;
-    config.max_distance = 0;
-    config.min_latitude = 0;
-    config.max_latitude = 0;
-    config.min_longitude = 0;
-    config.max_longitude = 0; 
+    config.update_interval_satellite = 60;
+    config.max_distance = (uint32_t)0;
+    config.min_latitude = (int32_t)34000000;
+    config.max_latitude = (int32_t)36000000;
+    config.min_longitude = (int32_t)-98000000;
+    config.max_longitude = (int32_t)-96000000; 
     EEPROM.put(EEPROM_BASE_ADDR, config);  // write config to EEPROM
   } 
   
@@ -748,43 +792,17 @@ void loop() {
   // when it's update time or there is a message waiting for RX, build the TX status message : 
   // example message: *** SDB TX: 000B21107916E8B8192A07531FA6E1B99101D7E100000 size 31
 
+  #ifdef DEBUG
+  if (!digitalRead(RING_PIN)) {
+      consoleSerial.println(F("*** SDB RING"));
+  }
+  #endif
+  
   // send message if:  1) ring pin active, 2) message waiting, 3)  satellite update time elapsed
   if ( (!digitalRead(RING_PIN))
         || (modem.getWaitingMessageCount() > 0)
         || (config.update_interval_satellite && (this_update_millis < last_update_millis))) {
-
-    #ifdef DEBUG
-    if (!digitalRead(RING_PIN)) {
-        consoleSerial.println(F("*** SDB RING"));
-    }
-    #endif
-    beacon.unit_id = config.unit_id;
-    beacon.state = active_state;
-    beacon.second = gps.time.second();
-    beacon.minute = gps.time.minute();
-    beacon.hour = gps.time.hour();
-    beacon.day = gps.date.day();
-    beacon.month = gps.date.month();
-    beacon.year = (uint8_t)(gps.date.year()-2000);
-    beacon.latitude = (uint32_t)(gps.location.lat()*(uint32_t)1000000);
-    beacon.longitude = (uint32_t)(gps.location.lng()*(uint32_t)1000000);
-    beacon.altitude = (int32_t)gps.altitude.meters();
-    beacon.course = (int16_t)(gps.course.value());  // 100ths of degree
-    beacon.speed = (int16_t)(gps.speed.value()); // 100ths of knot
-    beacon.pressure = current_pressure;
-    beacon.temperature = (int16_t)(temperature_sample*10); //current_temp*10;
-    beacon.humidity = 0*10; //current_humidity*10;
-    beacon.batt_voltage = analogRead(BATT_SENSE);
-    
-    #ifdef DEBUG
-    consoleSerial.print(F("*** SDB TX: "));
-    uint8_t *pointer = (uint8_t *)&beacon;
-    print_hex_buffer(consoleSerial, pointer, sizeof(beacon));
-    consoleSerial.print(F(" size "));
-    consoleSerial.print(sizeof(beacon));
-    consoleSerial.println();
-    #endif
-
+ 
     // sendReceiveSBDBinary(const uint8_t *txData, size_t txDataSize, uint8_t *rxBuffer, size_t &rxBufferSize)
     if (modem.isConnected()) { // Check that the Qwiic Iridium is connected
       //modem.enableSuperCapCharger(true); // Enable the super capacitor charger
@@ -795,7 +813,39 @@ void loop() {
       //consoleSerial.println("modem turned on");
       //modem.begin(); // Wake up the modem
       MT_buffer_size = sizeof(MT_buffer); // always reset this before receive; message size is returned in this variable
-      status = modem.sendReceiveSBDBinary((uint8_t *)&beacon, sizeof(beacon), MT_buffer, MT_buffer_size); // TX/RX a message in binary
+      if (config.update_interval_satellite && (this_update_millis < last_update_millis)) {
+        beacon.unit_id = config.unit_id;
+        beacon.state = active_state;
+        beacon.second = gps.time.second();
+        beacon.minute = gps.time.minute();
+        beacon.hour = gps.time.hour();
+        beacon.day = gps.date.day();
+        beacon.month = gps.date.month();
+        beacon.year = (uint8_t)(gps.date.year()-2000);
+        beacon.latitude = (uint32_t)(gps.location.lat()*(uint32_t)1000000);
+        beacon.longitude = (uint32_t)(gps.location.lng()*(uint32_t)1000000);
+        beacon.altitude = (int32_t)gps.altitude.meters();
+        beacon.course = (int16_t)(gps.course.value());  // 100ths of degree
+        beacon.speed = (int16_t)(gps.speed.value()); // 100ths of knot
+        beacon.pressure = current_pressure;
+        beacon.temperature = (int16_t)(temperature_sample*10); //current_temp*10;
+        beacon.humidity = 0*10; //current_humidity*10;
+        beacon.batt_voltage = analogRead(BATT_SENSE);
+        #ifdef DEBUG
+        consoleSerial.print(F("*** SDB TX: "));
+        uint8_t *pointer = (uint8_t *)&beacon;
+        print_hex_buffer(consoleSerial, pointer, sizeof(beacon));
+        consoleSerial.print(F(" size "));
+        consoleSerial.print(sizeof(beacon));
+        consoleSerial.println();
+        #endif
+        status = modem.sendReceiveSBDBinary((uint8_t *)&beacon, sizeof(beacon), MT_buffer, MT_buffer_size); // TX/RX a message in binary
+      } else {
+        #ifdef DEBUG
+        consoleSerial.println(F("*** SDB TX: NULL"));
+        #endif
+        status = modem.sendReceiveSBDBinary((uint8_t *)&beacon, 0, MT_buffer, MT_buffer_size);  // TX null message, receive incoming message
+      }
       #ifdef DEBUG
       if ((MT_buffer_size>0) && (status == 0)) {
         consoleSerial.print(F("*** SDB RX (hex): "));
@@ -862,34 +912,7 @@ void loop() {
           }
         #endif
       } else {
-        if ((MT_buffer_size == 3) && !strncmp(MT_buffer, "CFG", 3)) {
-          // send CFG+configuration string back   
-          #ifdef DEBUG
-            consoleSerial.print(F("*** CFG received, returning "));
-            print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
-            consoleSerial.println();
-          #endif
-          //memcpy((uint8_t *)&config, MT_buffer+3, sizeof(config));  // update MT_buffer to include current config
-          memcpy(MT_buffer+3, (uint8_t *)&config, sizeof(config));  // update MT_buffer to include current config
-          // forgot to send CFG header, please fix later DWK
-          //status = modem.sendSBDBinary((uint8_t *)&MT_buffer[0], 3+sizeof(config));  // TX CFG+binary configuration structure
-          status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size+sizeof(config));  // TX CFG+binary configuration structure
-          #ifdef DEBUG
-            consoleSerial.print(F("*** SBD TX status: "));
-            consoleSerial.println(status);
-            // Clear the Mobile Originated message buffer to avoid re-sending the message during subsequent loops
-            consoleSerial.println(F("*** SBD Clearing the MO buffer"));
-          #endif
-          status = modem.clearBuffers(ISBD_CLEAR_MO); // Clear MO buffer
-          #ifdef DEBUG
-            if (status != ISBD_SUCCESS) {
-              Serial.print(F("*** SBD clearBuffers failed: error "));
-              Serial.println(status);
-            }
-          #endif
-        } else {
-          process_cmd(MT_buffer, MT_buffer_size);        
-        }
+        process_cmd(MT_buffer, MT_buffer_size);           
       }
     }
   }
@@ -1153,6 +1176,9 @@ bool ISBDCallback() {
       // check pressure ceiling; set cut_pressure to 0 to disable pressure initiated cut
       // if ((cut_pressure > 0) && (current_pressure < (long)cut_pressure * 100)) {
       if ((config.cut_pressure) && (current_pressure < config.cut_pressure)) {
+        #ifdef DEBUG
+        consoleSerial.println(F("*** PRES CUT"));
+        #endif
         active_state = CUT_INIT;
         break;
       }
@@ -1168,24 +1194,39 @@ bool ISBDCallback() {
         }
         // compute distance and compare to max distance downrange
         if ( config.max_distance && (TinyGPSPlus::distanceBetween(gps.location.lat(),
-          gps.location.lng(), launch_lat, launch_lon) > config.max_distance)) {
+             gps.location.lng(), launch_lat, launch_lon) > config.max_distance)) {
+          #ifdef DEBUG
+          consoleSerial.println(F("*** DIST CUT"));
+          #endif
           active_state = CUT_INIT;
           break;
         // check min/max lat/lon to see if limits breached
         }
         if ( config.max_latitude!=0 && ( ((uint32_t)(gps.location.lat()*(uint32_t)1000000)) > config.max_latitude)) {
+          #ifdef DEBUG
+          consoleSerial.println(F("*** MAX LAT CUT"));
+          #endif
           active_state = CUT_INIT;
           break; 
         }
         if ( config.min_latitude!=0 && ( ((uint32_t)(gps.location.lat()*(uint32_t)1000000)) < config.min_latitude)) {
+          #ifdef DEBUG
+          consoleSerial.println(F("*** MIN LAT CUT"));
+          #endif          
           active_state = CUT_INIT;
           break; 
         }
         if ( config.max_longitude!=0 && ( ((uint32_t)(gps.location.lng()*(uint32_t)1000000)) > config.max_longitude)) {
+          #ifdef DEBUG
+          consoleSerial.println(F("*** MAX LON CUT"));
+          #endif
           active_state = CUT_INIT;
           break; 
         }
         if ( config.max_longitude!=0 && ( ((uint32_t)(gps.location.lng()*(uint32_t)1000000)) < config.min_longitude)) {
+          #ifdef DEBUG
+          consoleSerial.println(F("*** MIN LAT CUT"));
+          #endif
           active_state = CUT_INIT;
           break; 
         }
