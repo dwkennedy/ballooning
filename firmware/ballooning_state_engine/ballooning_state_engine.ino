@@ -216,7 +216,6 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       consoleSerial.print(F("*** CMD CUT "));
       consoleSerial.println(config.cut_duration);
       #endif
-      // do cut stuff here
       if (active_state == SETUP) {
         timer = millis();
         while ( (millis()-timer) < config.cut_duration) {
@@ -245,18 +244,24 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       consoleSerial.print(F("*** LET "));
       consoleSerial.println(config.letdown_duration);
       #endif
-      //launch_time = millis()-abs(config.letdown_delay)*1000;
-      if((millis()/1000)>((uint16_t)abs(config.letdown_delay))) {
-        launch_time = millis()-((uint16_t)abs(config.letdown_delay)*(uint16_t)1000);
+      if (active_state == SETUP) {
+        timer = millis();
+        while ( (millis()-timer) < config.cut_duration) {
+          digitalWrite(LED_RED, LOW);
+          digitalWrite(LED_GREEN, LOW);
+          digitalWrite(MOTOR, HIGH);
+        }
+        digitalWrite(MOTOR, LOW);
       } else {
-        launch_time = 0;
+        //launch_time = millis()-abs(config.letdown_delay)*1000;
+        if((millis()/1000)>((uint16_t)abs(config.letdown_delay))) {
+          launch_time = millis()-((uint16_t)abs(config.letdown_delay)*(uint16_t)1000);
+        } else {
+          launch_time = 0;
+        }
+        active_state = LETDOWN_INIT;
       }
-      //while ( ((millis()-timer)/(uint32_t)1000) < config.letdown_duration) {
-      //    digitalWrite(LED_RED, LOW);
-      //    digitalWrite(LED_GREEN, LOW);
-      //    digitalWrite(MOTOR, HIGH);
-      //digitalWrite(MOTOR, LOW);
-      active_state = LETDOWN_INIT;
+      
       return(1);
     }
     
