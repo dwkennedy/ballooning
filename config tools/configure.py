@@ -36,17 +36,10 @@ def build_config_struct():
     rise_rate_threshold = 85  # Pa/sec * conversion factor: NWC elevator is 100
     update_interval_satellite = 30  # SECONDS, 0 = no update
     max_distance = 0  # meters, 0=ignore
-<<<<<<< Updated upstream
     min_latitude = 34000000  # millionths of degrees, ie 35.123456 = 35123456, 0=ignore
     max_latitude = 36000000
     min_longitude = -98000000
     max_longitude = -96000000
-=======
-    min_latitude = 44000000  # millionths of degrees, ie 35.123456 = 35123456, 0=ignore
-    max_latitude = 45000000
-    min_longitude = -91000000
-    max_longitude = -90000000
->>>>>>> Stashed changes
 
     if (0):   # lloyd noble drive test
         serialnumber = 209879
