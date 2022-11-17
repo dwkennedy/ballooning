@@ -101,7 +101,7 @@ Adafruit_MPL3115A2 baro;
 // battery voltage analog input
 #define BATT_SENSE A3
 // voltage at which to skip turn-on motor/cutter pulse
-#define BATT_VOLTAGE_THRESHOLD (8.5)
+#define BATT_VOLTAGE_THRESHOLD (8.0)
 
 // length of filter (N must be odd)
 #define N (33)
@@ -122,47 +122,14 @@ struct eeprom_config config;
 // how often to send GPS packet to console
 static const uint16_t update_interval_console = 5;
 
-/*
-// address/serial number of unit
-uint16_t unit_id;
-
-// how many seconds before activation of the let down motor
-static unsigned int letdown_delay;
-
-// how long to run the motor (seconds)
-static unsigned int cut_duration;
-
-// when to terminate the flight (seconds)
-static unsigned int max_flight_duration;
-
-// pressure at which to cut, mbar
-static unsigned int cut_pressure;
-
-// how long to cut (seconds)
-static unsigned int cut_duration;
-
-// rise rate to trigger event. should be higher than noise but less than balloon rise rate. depends on sample rate and filter
-// elevator in NWC peaks out around 60.  noise level is +/- 10
-static unsigned int rise_rate_threshold;
-
-// max distance balloon can travel before cut (over surface of earth, in meters)
-static unsigned long max_distance;
-
-// geofencing min/max lat/long
-static long min_latitude;
-static long max_latitude;
-static long min_longitude;
-static long max_longitude;
-*/
-
-// lines on rockblock labelled backwards; TX on RB is wired to TX on 328P
+// lines on rockblock labelled as DCE/modem; TX on RB is wired to TX on 328P
 #define satSerial Serial
 #define RING_PIN (2)
-#define SLEEP_PIN (3)
+#define SLEEP_PIN (3)  // sleep ping requires some cicuitry to tie it to ground to put the iridium modem asleep
 SoftwareSerial gpsSerial (6,7); // RX, TX
 SoftwareSerial consoleSerial (10,9); // RX, TX 
 //IridiumSBD modem(satSerial, SLEEP_PIN, RING_PIN);  // Declare the IridiumSBD object
-IridiumSBD modem(satSerial, -1, RING_PIN);  // Declare the IridiumSBD object
+IridiumSBD modem(satSerial, -1, RING_PIN);  // Declare the IridiumSBD object, sleep pin didn't work as advertised :(
 TinyGPSPlus gps;  // Declare the TinyGPSPlus object
 
 // vector of filter coefficients
@@ -179,38 +146,11 @@ unsigned long base_pressure;
 // index of circular buffer, 0 to N-1
 uint16_t n = 0;
 
-// state engine labels
-enum state {
-  SETUP,
-  PRELAUNCH,
-  LETDOWN_INIT,
-  LETDOWN_ACTIVE,
-  FLIGHT,
-  CUT_INIT,
-  CUT_ACTIVE,
-  POST_FLIGHT_SATELLITE,
-  POST_FLIGHT_MAX_TIME,
-  POST_FLIGHT_PRESSURE,
-  POST_FLIGHT_DISTANCE,
-  POST_FLIGHT_GEOFENCE,
-};
-
-// satellite sending state
-enum satellite_state {
-  SEND_IDLE,
-  INTERRUPTABLE,
-  UNINTERRUPTABLE,
-};
-
-typedef enum state state; /* also a typedef of same identifier */
-typedef enum satellite_state satellite_state;
-
 state active_state = SETUP;  // initial states
 state cut_method = SETUP; 
 satellite_state active_satellite_state = SEND_IDLE;
 
-
-bool loopEnabled = false; // turn on/off SBD callback
+bool loop_enabled = false; // turn on/off SBD callback
 bool force_beacon = false;  // signal we want a beacon on the next cycle (won't abort present beacon)
 bool force_null = false;  // signal we want to retrieve and incoming command (RING) now, abort any session in progress
 
@@ -248,7 +188,7 @@ void print_hex_char(Stream &out, uint8_t c) {
     out.print(c, HEX);
 }
 
-// print a whole buffer as hex
+// print a whole buffer as ASCII hex
 void print_hex_buffer(Stream &out, uint8_t* c, uint16_t count) {
   for(int i=0; i<count; i++) {
     print_hex_char(out, c[i]);
@@ -332,22 +272,27 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       memcpy((uint8_t *)&config, buffer+3, sizeof(config));  // update config in memory
       EEPROM.put(EEPROM_BASE_ADDR, config);  // write new config to EEPROM
       // EEPROM.get(EEPROM_BASE_ADDR, config);  // read back from EEPROM
-      //return(1);
 
-       MT_buffer_size = 3;
-       memcpy(buffer,"CFG",3);  
-      // fall through to CFG command to return new config
+      if (active_state != SETUP) {  // if not in setup mode, fall through to CFG cmd and send a CFG message via satellite
+        buffer_size = 3;
+        memcpy(buffer,"CFG",3);
+      } else {
+        return(1);
+      }
+      
     }
     
-    if ((MT_buffer_size == 3) && !strncmp(MT_buffer, "CFG", 3)) {
+    if ((buffer_size == 3) && !strncmp(buffer, "CFG", 3)) {
       // send CFG+configuration string back   
-      memcpy(MT_buffer+3, (uint8_t *)&config, sizeof(config));  // update MT_buffer to include current config
+      memcpy(buffer+3, (uint8_t *)&config, sizeof(config));  // update MT_buffer to include current config
       #ifdef DEBUG
-        consoleSerial.print(F("*** CFG TX "));
-        print_hex_buffer(consoleSerial, MT_buffer, 3+sizeof(eeprom_config));
+        consoleSerial.print(F("*** SBD TX "));
+        print_hex_buffer(consoleSerial, buffer, 3+sizeof(eeprom_config));
+        consoleSerial.print(F(" size 0x"));
+        consoleSerial.print(3+sizeof(eeprom_config), HEX);
         consoleSerial.println();
       #endif
-      status = modem.sendSBDBinary((uint8_t *)&MT_buffer[0], 3+sizeof(config));  // TX CFG+binary configuration structure
+      status = modem.sendSBDBinary((uint8_t *)&buffer[0], 3+sizeof(config));  // TX CFG+binary configuration structure
       // this is wrong ==> status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size+sizeof(config));  // TX CFG+binary configuration structure
       #ifdef DEBUG
         consoleSerial.print(F("*** SBD TX status: "));
@@ -472,9 +417,6 @@ void setup() {
   #ifdef MPR
   digitalWrite(RESET_PIN, HIGH);  // take pressure sensor out of reset
   #endif
-  //delay(1000);
-  
-
   
   // read parameters from EEPROM-- things we can adjust for flight
 
@@ -503,6 +445,7 @@ void setup() {
     #ifdef DEBUG
     consoleSerial.println(F("*** Initializing EEPROM"));
     #endif
+    //  default configuration // default configuration // default configuration // default configuration // default configuration //
     config.unit_id = 0;
     config.letdown_delay = -30;  // seconds; positive: delay after launch detect, negative: delay after power on
     config.cut_duration = 3000;  // milliseconds
@@ -589,7 +532,7 @@ void setup() {
   #ifdef DEBUG
   consoleSerial.println(F("*** Start Iridium modem"));
   #endif
-  loopEnabled = false;  // disable SBD callback during setup
+  loop_enabled = false;  // disable SBD callback during setup
   modem.setPowerProfile(IridiumSBD::DEFAULT_POWER_PROFILE);  // high power
   //modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);  // for low power
   status = modem.begin();
@@ -711,24 +654,6 @@ void setup() {
   }
   #endif
 
-  /** if (0) {  // wierd stuff
-    base_pressure = 0;  // calculate base pressure for plotting later, average of several readings
-    for (int i=0; i<N*2; i++) {
-      // WHY DO I DO THIS WEIRD THING ABOUT SAMPLE[I/2]????? maybe to get more samples for base pressure?
-    #ifdef BMP180
-      //sample[i/2] = bmp.readPressure()/(double)100.0;  // read pressure in Pa, convert to mbar because we like mbar
-      sample[i/2] = (long)bmp.readPressure();  // read pressure in Pa, mbar * 100
-    #else
-      sample[i/2] = (long)97400;
-    #endif
-      base_pressure += sample[i/2];  // base_pressure is only used for arduino simple serial plotter
-      //sample[i] = 0;
-      //consoleSerial.println(sample[i/2]); // pressure in mbar
-      //delay(T);
-    }
-    base_pressure /= N*2;
-    } **/
-
   // pre-fill sample array with pressures
   #ifdef DEBUG
   consoleSerial.print(F("*** Initializing digital filter"));
@@ -790,7 +715,7 @@ void setup() {
   launch_alt = 0;
 
   // enable SBD callback
-  loopEnabled = true;
+  loop_enabled = true;
 
   // setup timer for LED blinking
   OCR0A = 0xAF;
@@ -962,7 +887,7 @@ bool ISBDCallback() {
   loop_timer=millis();
   #endif
 
-  if (!loopEnabled) {  // this is here to disable the loop while talking to satellite in setup()
+  if (!loop_enabled) {  // this is here to disable the loop while talking to satellite in setup()
     return true;
   }
 
@@ -1187,6 +1112,7 @@ bool ISBDCallback() {
         LED_period = 2000;
         LED_duration = 200;
         active_state = FLIGHT;
+        force_beacon = true;  // force message, report we're in flight mode
         #ifdef DEBUG
           consoleSerial.print(F("MOTOR OFF: "));
           consoleSerial.println(millis()/(uint32_t)1000);
@@ -1308,7 +1234,7 @@ bool ISBDCallback() {
         force_beacon = true;
         if (active_satellite_state != UNINTERRUPTABLE) {  // interrupt an ongoing sat session if it's a beacon
           #ifdef DEBUG
-          consoleSerial.println(F("*** interrupt sat session to report cut"));
+          consoleSerial.println(F("*** interrupt SBD session to report cut"));
           #endif
           return(false);  // returning false will terminate the SBD messages transmission early
         }

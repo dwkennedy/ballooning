@@ -1,3 +1,30 @@
+// state engine labels
+enum state {
+  SETUP,
+  PRELAUNCH,
+  LETDOWN_INIT,
+  LETDOWN_ACTIVE,
+  FLIGHT,
+  CUT_INIT,
+  CUT_ACTIVE,
+  POST_FLIGHT_SATELLITE,
+  POST_FLIGHT_MAX_TIME,
+  POST_FLIGHT_PRESSURE,
+  POST_FLIGHT_DISTANCE,
+  POST_FLIGHT_GEOFENCE,
+};
+
+typedef enum state state; /* also a typedef of same identifier */
+
+// satellite sending state
+enum satellite_state {
+  SEND_IDLE,
+  INTERRUPTABLE,
+  UNINTERRUPTABLE,
+};
+
+typedef enum satellite_state satellite_state;
+
 struct sat_message {
   uint16_t unit_id; // (0xFFFF = unset)
   uint8_t state;    // 0=prelaunch, 3=flight, etc
