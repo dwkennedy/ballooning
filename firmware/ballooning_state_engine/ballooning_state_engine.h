@@ -21,6 +21,7 @@ enum satellite_state {
   SEND_IDLE,
   INTERRUPTABLE,
   UNINTERRUPTABLE,
+  SESSION_INTERRUPTED,
 };
 
 typedef enum satellite_state satellite_state;
@@ -60,3 +61,5 @@ struct eeprom_config {
   int32_t min_longitude; // (millionths of degrees)
   int32_t max_longitude; // (millionths of degrees)
 };
+
+bool ISBDCallback();
