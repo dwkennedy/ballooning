@@ -299,7 +299,7 @@ uint8_t process_cmd(uint8_t buffer[], size_t buffer_size) {
       // fall through to LET command
     }
     
-    // LET command: LET (3 bytes)  activate motor for letdown_duration
+   // LET command: LET (3 bytes)  activate motor for letdown_duration
     if ((buffer_size == 3) && !strncmp(buffer, "LET", 3)) {
       #ifdef DEBUG
       consoleSerial.print(F("*** LET "));
@@ -504,7 +504,7 @@ void setup() {
     consoleSerial.println(F("*** Initializing EEPROM"));
     #endif
     config.unit_id = 0;
-    config.letdown_delay = 30;  // seconds; positive: delay after launch detect, negative: delay after power on
+    config.letdown_delay = -30;  // seconds; positive: delay after launch detect, negative: delay after power on
     config.cut_duration = 3000;  // milliseconds
     config.max_flight_duration = 45;
     config.cut_pressure = 0;
@@ -823,7 +823,6 @@ void loop() {
         || force_null || force_beacon
         || (modem.getWaitingMessageCount() > 0)
         || (config.update_interval_satellite && (this_update_millis < last_update_millis))) {
-
     
     if (modem.isConnected()) { // Check that the Qwiic Iridium is connected
       //modem.enableSuperCapCharger(true); // Enable the super capacitor charger
