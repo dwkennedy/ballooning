@@ -326,8 +326,9 @@ uint8_t process_cmd() {
       memcpy(MO_buffer, MT_buffer, 3);  // copy CFG to MO_buffer   
       memcpy(MO_buffer+3, (uint8_t *)&config, sizeof(config));  // add current config to MO_buffer
       MO_buffer_ready = true;  // flag MO buffer for transmission
+      MO_buffer_size = 3+sizeof(eeprom_config);
       #ifdef DEBUG
-        consoleSerial.print(F("*** SBD TX "));
+        consoleSerial.print(F("*** CFG "));
         print_hex_buffer(consoleSerial, MO_buffer, 3+sizeof(eeprom_config));
         consoleSerial.print(F(" size 0x"));
         consoleSerial.print(3+sizeof(eeprom_config), HEX);
@@ -612,6 +613,7 @@ void setup() {
   loop_enabled = false;  // disable SBD callback during setup
   modem.setPowerProfile(IridiumSBD::DEFAULT_POWER_PROFILE);  // high power
   //modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);  // for low power
+  modem.adjustSendReceiveTimeout(55);  // what will this do? DWK
   status = modem.begin();
   if (status != ISBD_SUCCESS)
   {
