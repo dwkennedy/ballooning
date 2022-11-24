@@ -463,7 +463,7 @@ void setup() {
     } else if ((batt_voltage-read_batt_voltage()) < OPEN_CIRCUIT_THRESHOLD) {
       consoleSerial.println(F("OPEN CIRCUIT"));
     } else {
-      consoleSerial.println(F("GOOD"));
+      consoleSerial.println(F("PASS"));
     }
     digitalWrite(CUTTER, LOW);  // turn off cutter
     delay(50);
@@ -476,7 +476,7 @@ void setup() {
     } else if ((batt_voltage-read_batt_voltage()) < OPEN_CIRCUIT_THRESHOLD) {
       consoleSerial.println(F("OPEN CIRCUIT"));
     } else {
-      consoleSerial.println(F("GOOD"));
+      consoleSerial.println(F("PASS"));
     }
     digitalWrite(MOTOR, LOW);  // turn off motor
   }
@@ -564,32 +564,7 @@ void setup() {
   digitalWrite(LED_RED, LOW);  // make sure leds are off
   digitalWrite(LED_GREEN, LOW);
 
-  #ifdef DEBUG
-     consoleSerial.print(F("*CFG "));
-     print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
-     consoleSerial.println();
-  #endif
-  
-  gpsSerial.begin(9600);  // software serial to gps receiver
-  gpsSerial.listen();
-
-#ifdef MPL3115A2
-  #ifdef DEBUG
-  consoleSerial.println(F("*Start MPL3115A2"));
-  #endif
-  if (!baro.begin()) {
-    consoleSerial.println(F("*Cannot connect to MPL3115A2, resetting"));
-    error_flash(3,3);
-    resetFunc();  // go back to setup()
-  }
-  baro.setMode(MPL3115A2_BAROMETER);
-#endif
-
-//  #ifdef DEBUG
-//  consoleSerial.println(F("*Connected to pressure sensor"));
-//  #endif
-  
-  // Begin satellite modem operation
+    // Begin satellite modem operation
   #ifdef DEBUG
   consoleSerial.println(F("*Start Iridium modem"));
   #endif
@@ -619,9 +594,36 @@ void setup() {
      consoleSerial.println(status);
      return;
   }
-  consoleSerial.print(F("*IMEI is "));
+  consoleSerial.print(F("*IMEI "));
   consoleSerial.println(IMEI);
   #endif
+
+  #ifdef DEBUG
+     consoleSerial.print(F("*CFG "));
+     print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
+     consoleSerial.println();
+  #endif
+  
+  gpsSerial.begin(9600);  // software serial to gps receiver
+  gpsSerial.listen();
+
+#ifdef MPL3115A2
+  #ifdef DEBUG
+  consoleSerial.println(F("*Start MPL3115A2"));
+  #endif
+  if (!baro.begin()) {
+    consoleSerial.println(F("*Cannot connect to MPL3115A2, resetting"));
+    error_flash(3,3);
+    resetFunc();  // go back to setup()
+  }
+  baro.setMode(MPL3115A2_BAROMETER);
+#endif
+
+//  #ifdef DEBUG
+//  consoleSerial.println(F("*Connected to pressure sensor"));
+//  #endif
+  
+
   
   #ifdef DEBUG_SBD
   // Print the firmware revision
