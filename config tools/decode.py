@@ -81,6 +81,7 @@ if __name__ == '__main__':
     else:
         configuration = "00001E0005003C000000B80B550078000000000000000000000000000000000000000000" # 505247
         configuration = "0000E2FF020000000000B80B55002C010000000080CC06020051250280A328FA002847FA"
+        configuration = "43464797261E0002000000C8AF881355003C000000000000000000000000000000"
 
     dump = bytes.fromhex(configuration)  # convert the ascii hex to bytes
     #print("bytes: " + str(dump))
