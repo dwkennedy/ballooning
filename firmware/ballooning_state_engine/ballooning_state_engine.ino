@@ -34,7 +34,7 @@
 
 #ifdef MPR
 #include <Wire.h>
-//#include <SparkFun_MicroPressure.h>
+
 /*
  * Initialize Constructor
  * Optional parameters:
@@ -43,8 +43,6 @@
  *  - MIN_PSI: Minimum Pressure (default: 0 PSI)
  *  - MAX_PSI: Maximum Pressure (default: 25 PSI)
  */
-//SparkFun_MicroPressure mpr(EOC_PIN, RST_PIN, MIN_PSI, MAX_PSI);
-//SparkFun_MicroPressure mpr; // Use default values with reset and EOC pins unused
 
 #include "Doug_Adafruit_MPRLS.h"
 #define RESET_PIN 5  // set to any GPIO pin # to hard-reset on begin()
@@ -58,13 +56,11 @@ Adafruit_MPL3115A2 baro;
 #endif
 
 #include <SoftwareSerial.h>
-//#include <NeoSWSerial.h>
-// #define _SS_MAX_RX_BUFF 128 // RX buffer size
 #include <IridiumSBD.h>
-//#include <MicroNMEA.h>
 #include <TinyGPSPlus.h> // NMEA parsing: http://arduiniana.org
 
 #include <EEPROM.h>
+// EEPROM_BASE_ADDR lets you spread the configuration load around the EEPROM so you don't wear a hole in it
 #define EEPROM_BASE_ADDR 40
 #include <math.h>
 #include "ballooning_state_engine.h"
@@ -99,6 +95,8 @@ Adafruit_MPL3115A2 baro;
 #define BATT_SENSE A3
 // voltage at which to skip turn-on motor/cutter pulse
 #define BATT_VOLTAGE_THRESHOLD (8.0)
+// voltage at which to disable motor
+#define BATT_VOLTAGE_OVERCURRENT (6.0)
 
 // length of filter (N must be odd)
 #define N (33)
@@ -158,25 +156,30 @@ static uint32_t launch_time = 0;  // so we can time letdown and flight time.  st
 float launch_lat;
 float launch_lon;
 float launch_alt;
-bool gps_isvalid;  // flag to indiate valid lock or not
+bool gps_isvalid;  // flag to indicate valid lock or not
 
-uint16_t batt_voltage;
+// average of last N samples
 uint32_t current_pressure;
+// current single sample of pressure
 uint32_t pressure_sample;
 float temperature_sample;
 int32_t rise_rate;
+float batt_voltage;
 
 uint8_t MT_buffer[60];  // buffer for mobile terminated messages (commands to rockblock)
 size_t MT_buffer_size; // = sizeof(MT_buffer);
 uint8_t MO_buffer[60];  // buffer for mobile originated messages (beacons, replies to commands)
 size_t MO_buffer_size;
 bool MO_buffer_ready = false;  // semaphone to indicate message ready to send
-struct sat_message *beacon;  // pointer to beacon (we'll build the beacon in MO_buffer directly)
+struct sat_message *beacon;  // pointer to beacon (we'll load the beacon structure in MO_buffer directly)
 
 uint8_t status;  // return status of satellite commands
 int16_t x;  // rando temp variable 
 uint32_t timer;  // store millis() value for timing
-  
+
+
+// utility functions
+
 // declare the reset function so we can restart program
 void(* resetFunc) (void) = 0;
 
@@ -204,6 +207,7 @@ void print_hex_buffer(Stream &out, uint8_t* c, uint16_t count) {
 }
 
 void build_beacon() {
+  // beacon was initialized to point at MO_buffer, outgoing satellite buffer
   //consoleSerial.println("building a beacon");
   beacon->unit_id = config.unit_id;
   beacon->state = active_state;
@@ -221,7 +225,7 @@ void build_beacon() {
   beacon->pressure = current_pressure;
   beacon->temperature = (int16_t)(temperature_sample*10); //current_temp*10;
   beacon->humidity = (int16_t)rise_rate; //current_humidity*10;  // since we don't have humidity sensor use this field for rise rate!
-  beacon->batt_voltage = analogRead(BATT_SENSE);
+  beacon->batt_voltage = analogRead(BATT_SENSE);  // return 10 bit representation of batt voltage
   
   MO_buffer_size = sizeof(sat_message);
   MO_buffer_ready = true;  // queue for transmission
@@ -247,7 +251,7 @@ uint8_t process_cmd() {
     // CUT command:  CUT (3 bytes)
     if ((MT_buffer_size == 3) && !strncmp(MT_buffer, "CUT", 3)) {
       #ifdef DEBUG
-      consoleSerial.print(F("*** CMD CUT "));
+      consoleSerial.print(F("*CMD CUT "));
       consoleSerial.println(config.cut_duration);
       #endif
       if (active_state == SETUP) {
@@ -275,7 +279,7 @@ uint8_t process_cmd() {
    // LET command: LET (3 bytes)  activate motor for letdown_duration
     if ((MT_buffer_size == 3) && !strncmp(MT_buffer, "LET", 3)) {
       #ifdef DEBUG
-      consoleSerial.print(F("*** LET "));
+      consoleSerial.print(F("*LET "));
       consoleSerial.println(config.letdown_duration);
       #endif
       if (active_state == SETUP) {
@@ -302,7 +306,7 @@ uint8_t process_cmd() {
     // PRG commmand:  store configuration structure to EEPROM
     if ((MT_buffer_size == (36+3)) && !strncmp(MT_buffer, "PRG", 3)) {
       #ifdef DEBUG
-      consoleSerial.print(F("*** PRG "));
+      consoleSerial.print(F("*PRG "));
       print_hex_buffer(consoleSerial, MT_buffer+3, MT_buffer_size-3);
       consoleSerial.println();
       #endif
@@ -328,28 +332,12 @@ uint8_t process_cmd() {
       MO_buffer_ready = true;  // flag MO buffer for transmission
       MO_buffer_size = 3+sizeof(eeprom_config);
       #ifdef DEBUG
-        consoleSerial.print(F("*** CFG "));
-        print_hex_buffer(consoleSerial, MO_buffer, 3+sizeof(eeprom_config));
-        consoleSerial.print(F(" size 0x"));
-        consoleSerial.print(3+sizeof(eeprom_config), HEX);
-        consoleSerial.println();
+      consoleSerial.print(F("*CFG "));
+      print_hex_buffer(consoleSerial, MO_buffer, 3+sizeof(eeprom_config));
+      consoleSerial.print(F(" size 0x"));
+      consoleSerial.print(3+sizeof(eeprom_config), HEX);
+      consoleSerial.println();
       #endif
-      // we no longer send the buffer here, wait for next loop().  aka one element queue
-      //status = modem.sendSBDBinary((uint8_t *)&buffer[0], 3+sizeof(config));  // TX CFG+binary configuration structure
-      // this is wrong ==> status = modem.sendSBDBinary((uint8_t *)&MT_buffer[3], MT_buffer_size+sizeof(config));  // TX CFG+binary configuration structure
-      //#ifdef DEBUG
-      //  consoleSerial.print(F("*** SBD TX status: "));
-      //  consoleSerial.println(status);
-      //  // Clear the Mobile Originated message buffer to avoid re-sending the message during subsequent loops
-      //  consoleSerial.println(F("*** SBD Clearing the MO buffer"));
-      //#endif
-      //status = modem.clearBuffers(ISBD_CLEAR_MO); // Clear MO buffer
-      //#ifdef DEBUG
-      //  if (status != ISBD_SUCCESS) {
-      //    Serial.print(F("*** SBD clearBuffers failed: error "));
-      //    Serial.println(status);
-      //  }
-      //#endif
       return(1);
     }    
 
@@ -357,7 +345,7 @@ uint8_t process_cmd() {
     if ((MT_buffer_size == 5) && !strncmp(MT_buffer, "UPD", 3)) {
       config.update_interval_satellite = (uint16_t)*(MT_buffer+3) + 0x100*(uint16_t)*(MT_buffer+4);
       #ifdef DEBUG
-      consoleSerial.print(F("*** UPD "));
+      consoleSerial.print(F("*UPD "));
       consoleSerial.print(config.update_interval_satellite);
       consoleSerial.println();
       #endif
@@ -371,10 +359,11 @@ uint8_t process_cmd() {
       MO_buffer_size = MT_buffer_size-3;
       MO_buffer_ready = true;  // queue message
       #ifdef DEBUG
-      consoleSerial.print(F("*** PNG "));
+      consoleSerial.print(F("*PNG "));
       print_hex_buffer(consoleSerial,MT_buffer,MT_buffer_size);
       consoleSerial.println();
       #endif
+      return(1);
     }
 
     if ((MT_buffer_size==3) && !strncmp(MT_buffer, "END", 3)) {
@@ -382,7 +371,7 @@ uint8_t process_cmd() {
     }
 
     #ifdef DEBUG
-    consoleSerial.print(F("*** process_cmd(): invalid "));
+    consoleSerial.print(F("*process_cmd(): invalid "));
     print_hex_buffer(consoleSerial, MT_buffer, MT_buffer_size);
     consoleSerial.print(F(" size "));
     consoleSerial.println(MT_buffer_size);
@@ -449,7 +438,7 @@ void setup() {
   delay(6000);
   
   #ifdef DEBUG
-    consoleSerial.println(F("\r\n*** Start setup()"));
+    consoleSerial.println(F("\r\n*Start setup()"));
   #endif
   
   // turn off all LED, on since boot for 5 sec (lamp test)
@@ -461,29 +450,29 @@ void setup() {
   #define MOTOR_BATTERY_DROP_THRESHOLD (1.2)
   #define OPEN_CIRCUIT_THRESHOLD (0.1)
   if ( read_batt_voltage() > BATT_VOLTAGE_THRESHOLD ) { 
-    float batt=read_batt_voltage();
-    consoleSerial.print(F("*** BATTERY "));
-    consoleSerial.print(batt);
+    batt_voltage=read_batt_voltage();
+    consoleSerial.print(F("*BATTERY "));
+    consoleSerial.print(batt_voltage);
     consoleSerial.println(F("V"));
-    consoleSerial.print(F("*** CUTTER TEST: "));
+    consoleSerial.print(F("*CUTTER TEST: "));
     digitalWrite(CUTTER, HIGH);  // turn on cutter
     delay(100);
-    if ((batt-read_batt_voltage()) > CUTTER_BATTERY_DROP_THRESHOLD) {  // test for cutter fault
+    if ((batt_voltage-read_batt_voltage()) > CUTTER_BATTERY_DROP_THRESHOLD) {  // test for cutter fault
       consoleSerial.println(F("OVERCURRENT"));
-    } else if ((batt-read_batt_voltage()) < OPEN_CIRCUIT_THRESHOLD) {
+    } else if ((batt_voltage-read_batt_voltage()) < OPEN_CIRCUIT_THRESHOLD) {
       consoleSerial.println(F("OPEN CIRCUIT"));
     } else {
       consoleSerial.println(F("GOOD"));
     }
     digitalWrite(CUTTER, LOW);  // turn off cutter
     delay(50);
-    batt = read_batt_voltage();
-    consoleSerial.print(F("*** MOTOR TEST: "));
+    batt_voltage = read_batt_voltage();
+    consoleSerial.print(F("*MOTOR TEST: "));
     digitalWrite(MOTOR, HIGH);  // turn on motor
     delay(50);
-    if ((batt-read_batt_voltage()) > MOTOR_BATTERY_DROP_THRESHOLD) {  // test for motor fault
+    if ((batt_voltage-read_batt_voltage()) > MOTOR_BATTERY_DROP_THRESHOLD) {  // test for motor fault
       consoleSerial.println(F("OVER CURRENT"));
-    } else if ((batt-read_batt_voltage()) < OPEN_CIRCUIT_THRESHOLD) {
+    } else if ((batt_voltage-read_batt_voltage()) < OPEN_CIRCUIT_THRESHOLD) {
       consoleSerial.println(F("OPEN CIRCUIT"));
     } else {
       consoleSerial.println(F("GOOD"));
@@ -503,26 +492,19 @@ void setup() {
   //EEPROM.put(EEPROM_BASE_ADDR, (uint16_t)0xFFFF);
   
   #ifdef DEBUG
-  //consoleSerial.println("*** reading EEPROM");
+  //consoleSerial.println("*reading EEPROM");
   #endif
   EEPROM.get(EEPROM_BASE_ADDR, config); 
   #ifdef DEBUG
-  consoleSerial.print(F("*** EEPROM "));
+  consoleSerial.print(F("*EEPROM "));
   print_hex_buffer(consoleSerial,(uint8_t *)&config, sizeof(struct eeprom_config));
   consoleSerial.println();
   #endif
-
-/*  EEPROM.get(EEPROM_BASE_ADDR, config.unit_id);
-  #ifdef DEBUG
-  consoleSerial.print("*** unit_id: ");
-  consoleSerial.println(config.unit_id, HEX);
-  #endif 
-*/
   
   // check for uninitialized EEPROM
   if (config.unit_id == 0xFFFF) { // not initialized, so lets initialize it
     #ifdef DEBUG
-    consoleSerial.println(F("*** Initializing EEPROM"));
+    consoleSerial.println(F("*Initializing EEPROM"));
     #endif
     //  default configuration // default configuration // default configuration // default configuration // default configuration //
     config.unit_id = 0;
@@ -543,7 +525,7 @@ void setup() {
   
   // check for commands on serial port;
   #ifdef DEBUG
-  consoleSerial.println(F("*** Wait for serial cmd"));
+  consoleSerial.println(F("*Wait for serial cmd"));
   #endif
   for(uint8_t i=0; i<10; i++) {
     digitalWrite(LED_RED, i%2);  // blink LEDs during programming phase
@@ -582,7 +564,7 @@ void setup() {
   digitalWrite(LED_GREEN, LOW);
 
   #ifdef DEBUG
-     consoleSerial.print(F("*** CFG "));
+     consoleSerial.print(F("*CFG "));
      print_hex_buffer(consoleSerial, (uint8_t *) &config, sizeof(eeprom_config));
      consoleSerial.println();
   #endif
@@ -592,10 +574,10 @@ void setup() {
 
 #ifdef MPL3115A2
   #ifdef DEBUG
-  consoleSerial.println(F("*** Start MPL3115A2"));
+  consoleSerial.println(F("*Start MPL3115A2"));
   #endif
   if (!baro.begin()) {
-    consoleSerial.println(F("*** Cannot connect to MPL3115A2, resetting"));
+    consoleSerial.println(F("*Cannot connect to MPL3115A2, resetting"));
     error_flash(3,3);
     resetFunc();  // go back to setup()
   }
@@ -603,12 +585,12 @@ void setup() {
 #endif
 
 //  #ifdef DEBUG
-//  consoleSerial.println(F("*** Connected to pressure sensor"));
+//  consoleSerial.println(F("*Connected to pressure sensor"));
 //  #endif
   
   // Begin satellite modem operation
   #ifdef DEBUG
-  consoleSerial.println(F("*** Start Iridium modem"));
+  consoleSerial.println(F("*Start Iridium modem"));
   #endif
   loop_enabled = false;  // disable SBD callback during setup
   modem.setPowerProfile(IridiumSBD::DEFAULT_POWER_PROFILE);  // high power
@@ -617,10 +599,10 @@ void setup() {
   status = modem.begin();
   if (status != ISBD_SUCCESS)
   {
-    consoleSerial.print(F("*** Iridium begin failed: error "));
+    consoleSerial.print(F("*Iridium begin failed: error "));
     consoleSerial.println(status);
     if (status == ISBD_NO_MODEM_DETECTED) {
-      consoleSerial.println(F("*** No modem detected: check wiring."));
+      consoleSerial.println(F("*No modem detected: check wiring."));
       error_flash(2,3);
       resetFunc();
     }
@@ -632,11 +614,11 @@ void setup() {
   status = modem.getIMEI(IMEI, sizeof(IMEI));
   if (status != ISBD_SUCCESS)
   {
-     consoleSerial.print(F("*** getIMEI failed: error "));
+     consoleSerial.print(F("*getIMEI failed: error "));
      consoleSerial.println(status);
      return;
   }
-  consoleSerial.print(F("*** IMEI is "));
+  consoleSerial.print(F("*IMEI is "));
   consoleSerial.println(IMEI);
   #endif
   
@@ -646,11 +628,11 @@ void setup() {
   status = modem.getFirmwareVersion(version, sizeof(version));
   if (status != ISBD_SUCCESS)
   {
-     consoleSerial.print(F("*** FirmwareVersion failed: error "));
+     consoleSerial.print(F("*FirmwareVersion failed: error "));
      consoleSerial.println(status);
      return;
   }
-  consoleSerial.print(F("*** Firmware Version is "));
+  consoleSerial.print(F("*Firmware Version is "));
   consoleSerial.println(version);
 
   // Check the signal quality.
@@ -660,12 +642,12 @@ void setup() {
   status = modem.getSignalQuality(signalQuality);
   if (status != ISBD_SUCCESS)
   {
-    consoleSerial.print(F("*** getSignalQuality failed: error "));
+    consoleSerial.print(F("*getSignalQuality failed: error "));
     consoleSerial.println(status);
     return;
   }
 
-  consoleSerial.print(F("*** Signal quality "));
+  consoleSerial.print(F("*Signal quality "));
   consoleSerial.print(signalQuality);
   consoleSerial.println(F(" out of 5"));
 
@@ -719,7 +701,7 @@ void setup() {
   //#endif
   while(!mpr.begin())
   {
-    consoleSerial.println(F("*** Cannot connect to MPRLS sensor, resetting"));
+    consoleSerial.println(F("*Cannot connect to MPRLS sensor, resetting"));
     error_flash(3,3);
     resetFunc();  // go back to setup()
   }
@@ -727,7 +709,7 @@ void setup() {
 
   // pre-fill sample array with pressures
   #ifdef DEBUG
-  consoleSerial.print(F("*** Initializing digital filter"));
+  consoleSerial.print(F("*Initializing digital filter"));
   #endif
   base_pressure = 0;
   for (int i = 0; i < N; i++) {
@@ -766,9 +748,9 @@ void setup() {
   
   base_pressure /= N;  // base_pressure is average of N readings
   #ifdef DEBUG
-    consoleSerial.print(F("*** base_pressure="));
+    consoleSerial.print(F("*base_pressure="));
     consoleSerial.println(base_pressure);
-    consoleSerial.println(F("*** End setup()"));
+    consoleSerial.println(F("*End setup()"));
     consoleSerial.println(F("time,state,ring,gps_time,pressure,rise_rate,lat,lon,distance,gps_rx,voltage"));
   #endif
 
@@ -806,12 +788,12 @@ void loop() {
   this_update_millis = (millis() % ((uint32_t)1000*(uint32_t)config.update_interval_satellite));
 
   // when it's update time or there is a message waiting for RX, build the TX status message : 
-  // example message: *** SBD TX: 000B21107916E8B8192A07531FA6E1B99101D7E100000 size 31
+  // example message: *SBD TX: 000B21107916E8B8192A07531FA6E1B99101D7E100000 size 31
 
   // if there's not an incoming message (RING) and it's beacon time, queue a beacon packet
   if (!digitalRead(RING_PIN)) {
       #ifdef DEBUG
-      consoleSerial.println(F("*** SBD RING in loop()"));
+      consoleSerial.println(F("*SBD RING in loop()"));
       #endif
   } else {
     // if not already a MO_buffer queued, no incoming messages waiting, beacons enabled, and it's time for a beacon...
@@ -835,7 +817,7 @@ void loop() {
         //modem.begin(); // Wake up the modem
         MT_buffer_size = sizeof(MT_buffer); // always reset this before receive; message size is returned in this variable
         #ifdef DEBUG
-        consoleSerial.println(F("*** SBD TX: NULL"));
+        consoleSerial.println(F("*SBD TX: NULL"));
         #endif
         active_satellite_state = UNINTERRUPTABLE;  // don't stop command retrieval
         status = modem.sendReceiveSBDBinary(MO_buffer, 0, MT_buffer, MT_buffer_size);  // TX null message, receive incoming message
@@ -852,21 +834,21 @@ void loop() {
         //modem.begin(); // Wake up the modem
         MT_buffer_size = sizeof(MT_buffer); // always reset this before receive; message size is returned in this variable
         #ifdef DEBUG
-        consoleSerial.print(F("*** SBD TX: "));
+        consoleSerial.print(F("*SBD TX: "));
         print_hex_buffer(consoleSerial, MO_buffer, MO_buffer_size);
         consoleSerial.print(F(" size "));
         consoleSerial.println(MO_buffer_size);
         #endif
         active_satellite_state = INTERRUPTABLE;
         status = modem.sendReceiveSBDBinary(MO_buffer, MO_buffer_size, MT_buffer, MT_buffer_size); // TX/RX a message in binary
-        //consoleSerial.print(F("*** SBD TX/RX status: "));
+        //consoleSerial.print(F("*SBD TX/RX status: "));
         //consoleSerial.println(status);
-        //consoleSerial.print(F("*** active_satellite_state: "));
+        //consoleSerial.print(F("*active_satellite_state: "));
         //consoleSerial.println(active_satellite_state);
         if (active_satellite_state != SESSION_INTERRUPTED) {
           MO_buffer_ready = false;  // we tried to send it, dequeue message... but not if we've been interrupted by a new beacon
         } else {
-          consoleSerial.println(F("*** SBD session interrupted"));
+          consoleSerial.println(F("*SBD session interrupted"));
         }
       }
     }
@@ -874,11 +856,11 @@ void loop() {
     if (active_satellite_state != SESSION_INTERRUPTED) {  // we sent a message or null, let's read the result
       #ifdef DEBUG
       if ((MT_buffer_size>0) && (status == ISBD_SUCCESS)) {  // successful session, command in MT_buffer
-        consoleSerial.print(F("*** SBD RX (hex): "));
+        consoleSerial.print(F("*SBD RX (hex): "));
         print_hex_buffer(consoleSerial, MT_buffer, MT_buffer_size);
         consoleSerial.print(F(" size 0x"));
         consoleSerial.println(MT_buffer_size, HEX);
-        consoleSerial.print(F("*** SBD RX (asc): "));
+        consoleSerial.print(F("*SBD RX (asc): "));
         for(int i=0; i<MT_buffer_size; i++) {
           if ( isprint(MT_buffer[i])) { // print RX message printable characters
             consoleSerial.write(MT_buffer[i]);
@@ -898,7 +880,7 @@ void loop() {
     // at this point, the session is over and has either succeeded, failed, or has been interrupted.  
     active_satellite_state = SEND_IDLE;   // clear sending state
     #ifdef DEBUG
-    consoleSerial.print(F("*** SBD TX/RX status: "));
+    consoleSerial.print(F("*SBD TX/RX status: "));
     consoleSerial.println(status);
     #endif
     
@@ -909,12 +891,12 @@ void loop() {
     
     // Clear the Mobile Originated message buffer to avoid re-sending the message during subsequent loops
     #ifdef DEBUG
-    consoleSerial.println(F("*** SBD Clearing the MO buffer"));
+    consoleSerial.println(F("*SBD Clearing the MO buffer"));
     #endif
     status = modem.clearBuffers(ISBD_CLEAR_MO); // Clear MO buffer
     #ifdef DEBUG
     if (status != ISBD_SUCCESS) {
-      consoleSerial.print(F("*** SBD clearBuffers failed: error "));
+      consoleSerial.print(F("*SBD clearBuffers failed: error "));
       consoleSerial.println(status);
     }
     #endif
@@ -925,7 +907,7 @@ void loop() {
     //modem.enable841lowPower(true); // Enable the ATtiny841's low power mode (optional)
     
     #ifdef DEBUG
-    consoleSerial.println(F("*** SBD TX/RX finished"));
+    consoleSerial.println(F("*SBD TX/RX finished"));
     #endif
   }
      
@@ -1110,7 +1092,7 @@ bool ISBDCallback() {
         if (active_satellite_state == INTERRUPTABLE) {  // interrupt an ongoing sat session if it's a beacon
           active_satellite_state = SESSION_INTERRUPTED; // lets the other loop know we've interrupted them
           #ifdef DEBUG
-          consoleSerial.println(F("*** interrupt SBD session to report launch"));
+          consoleSerial.println(F("*interrupt SBD session to report launch"));
           #endif
           return(false);  // returning false will terminate the SBD messages transmission early
         }
@@ -1131,7 +1113,7 @@ bool ISBDCallback() {
         if (active_satellite_state == INTERRUPTABLE) {  // interrupt an ongoing sat session if it's a beacon
           active_satellite_state = SESSION_INTERRUPTED;  // lets the other loop know we've interrupted them
           #ifdef DEBUG
-          consoleSerial.println(F("*** interrupt SBD session to report launch"));
+          consoleSerial.println(F("*interrupt SBD session to report launch"));
           #endif
           return(false);  // returning false will terminate the SBD messages transmission early
         }
@@ -1156,22 +1138,31 @@ bool ISBDCallback() {
         active_state = LETDOWN_ACTIVE;
         #ifdef DEBUG
           consoleSerial.print(F("MOTOR ON: "));
-          consoleSerial.println(millis()/(uint32_t)1000);
+          consoleSerial.println(millis());
         #endif
       }
       break;
 
     case LETDOWN_ACTIVE:  // letting down, 10Hz flashes
-      if ( ((millis() - launch_time)/1000L) > ((abs(config.letdown_delay) + config.letdown_duration)) ) {
-        digitalWrite(MOTOR, LOW);
+      // check for overcurrent condition while motor on (jammed motor)
+      batt_voltage = read_batt_voltage();  // check battery voltage 
+      if ( ( batt_voltage < BATT_VOLTAGE_OVERCURRENT ) || (((millis() - launch_time)/1000L) > ((abs(config.letdown_delay) + config.letdown_duration))) ) {
         LED_period = 2000;
         LED_duration = 200;
         active_state = FLIGHT;
-        //build_beacon();  // queue beacon for transport, report we're in flight mode
-        #ifdef DEBUG
+        if ( batt_voltage < BATT_VOLTAGE_OVERCURRENT ) {
+          build_beacon();  // signal that letdown failed by low battery voltage
+          #ifdef DEBUG
+          consoleSerial.print(F("MOTOR STALLED: "));
+          consoleSerial.println(millis());
+          #endif
+        } else {
+          #ifdef DEBUG
           consoleSerial.print(F("MOTOR OFF: "));
-          consoleSerial.println(millis()/(uint32_t)1000);
-        #endif
+          consoleSerial.println(millis());
+          #endif
+        }
+        digitalWrite(MOTOR, LOW);
       }
       break;
 
@@ -1179,7 +1170,7 @@ bool ISBDCallback() {
       // check time limit; set max_flight_duration to 0 to disable time initiated cut
       if ((config.max_flight_duration > 0) && ( ( (millis() - (uint32_t)launch_time)/(uint32_t)1000) > config.max_flight_duration)) {
         #ifdef DEBUG
-        consoleSerial.println(F("*** TIME CUT"));
+        consoleSerial.println(F("*TIME CUT"));
         #endif
         cut_method = POST_FLIGHT_MAX_TIME;
         active_state = CUT_INIT;
@@ -1189,7 +1180,7 @@ bool ISBDCallback() {
       // if ((cut_pressure > 0) && (current_pressure < (long)cut_pressure * 100)) {
       if ((config.cut_pressure) && (current_pressure < config.cut_pressure)) {
         #ifdef DEBUG
-        consoleSerial.println(F("*** PRES CUT"));
+        consoleSerial.println(F("*PRES CUT"));
         #endif
         cut_method = POST_FLIGHT_PRESSURE;
         active_state = CUT_INIT;
@@ -1209,7 +1200,7 @@ bool ISBDCallback() {
         if ( config.max_distance && (TinyGPSPlus::distanceBetween(gps.location.lat(),
              gps.location.lng(), launch_lat, launch_lon) > config.max_distance)) {
           #ifdef DEBUG
-          consoleSerial.println(F("*** DIST CUT"));
+          consoleSerial.println(F("*DIST CUT"));
           #endif
           cut_method = POST_FLIGHT_DISTANCE;
           active_state = CUT_INIT;
@@ -1218,7 +1209,7 @@ bool ISBDCallback() {
         }
         if ( config.max_latitude!=0 && ( ((uint32_t)(gps.location.lat()*(uint32_t)1000000)) > config.max_latitude)) {
           #ifdef DEBUG
-          consoleSerial.println(F("*** MAX LAT CUT"));
+          consoleSerial.println(F("*MAX LAT CUT"));
           #endif
           cut_method = POST_FLIGHT_GEOFENCE;
           active_state = CUT_INIT;
@@ -1226,7 +1217,7 @@ bool ISBDCallback() {
         }
         if ( config.min_latitude!=0 && ( ((uint32_t)(gps.location.lat()*(uint32_t)1000000)) < config.min_latitude)) {
           #ifdef DEBUG
-          consoleSerial.println(F("*** MIN LAT CUT"));
+          consoleSerial.println(F("*MIN LAT CUT"));
           #endif
           cut_method = POST_FLIGHT_GEOFENCE;
           active_state = CUT_INIT;
@@ -1234,7 +1225,7 @@ bool ISBDCallback() {
         }
         if ( config.max_longitude!=0 && ( ((uint32_t)(gps.location.lng()*(uint32_t)1000000)) > config.max_longitude)) {
           #ifdef DEBUG
-          consoleSerial.println(F("*** MAX LON CUT"));
+          consoleSerial.println(F("*MAX LON CUT"));
           #endif
           cut_method = POST_FLIGHT_GEOFENCE;
           active_state = CUT_INIT;
@@ -1242,7 +1233,7 @@ bool ISBDCallback() {
         }
         if ( config.max_longitude!=0 && ( ((uint32_t)(gps.location.lng()*(uint32_t)1000000)) < config.min_longitude)) {
           #ifdef DEBUG
-          consoleSerial.println(F("*** MIN LAT CUT"));
+          consoleSerial.println(F("*MIN LAT CUT"));
           #endif
           cut_method = POST_FLIGHT_GEOFENCE;
           active_state = CUT_INIT;
@@ -1260,7 +1251,7 @@ bool ISBDCallback() {
       active_state = CUT_ACTIVE;
       #ifdef DEBUG
         consoleSerial.print(F("CUTDOWN ON: "));
-        consoleSerial.println(millis()/(uint32_t)1000);
+        consoleSerial.println(millis());
       #endif
       break;
 
@@ -1272,7 +1263,7 @@ bool ISBDCallback() {
         active_state = cut_method;
         #ifdef DEBUG
           consoleSerial.print(F("CUTDOWN OFF: "));
-          consoleSerial.println(millis()/(uint32_t)1000);
+          consoleSerial.println(millis());
         #endif
       }
       break;
@@ -1290,7 +1281,7 @@ bool ISBDCallback() {
         if (active_satellite_state == INTERRUPTABLE) {  // interrupt an ongoing sat session if it's a beacon
           active_satellite_state = SESSION_INTERRUPTED;  // lets other loop know we interrupted them
           #ifdef DEBUG
-          consoleSerial.println(F("*** interrupt SBD session to report cut"));
+          consoleSerial.println(F("*interrupt SBD session to report cut"));
           #endif
           return(false);  // returning false will terminate the SBD messages transmission early
         }
@@ -1309,7 +1300,7 @@ bool ISBDCallback() {
 
   if( (!digitalRead(RING_PIN)) && (active_satellite_state == INTERRUPTABLE)) {
     #ifdef DEBUG
-    consoleSerial.println(F("*** SBD RING detected in ISBDCallback"));
+    consoleSerial.println(F("*SBD RING detected in ISBDCallback"));
     #endif
     return(false);  // returning false will terminate the SBD messages transmission early
   } else {
