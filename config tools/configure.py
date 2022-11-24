@@ -18,8 +18,9 @@ def build_config_struct():
     global serialnumber
     global imei
 
+    # use serial number from Iridium modem; should match IMEI read from modem
     serialnumber = 209879
-    imei = "0"
+    # only set IMEI if you want to override what is returned from device
     #imei = "300434066196920"
 
 #    serialnumber = 209825
@@ -30,7 +31,7 @@ def build_config_struct():
 
     unit_id = 9879
     letdown_delay = -30  # positive: seconds after launch detect: negative, seconds after power on
-    letdown_duration = 1  # seconds
+    letdown_duration = 15  # seconds
     max_flight_duration = 0  # SECONDS, 0=ignore
     cut_pressure = 0      # Pascals, 0=ignore
     cut_duration = 10000  # milliseconds
@@ -247,10 +248,11 @@ if __name__ == '__main__':
         foo = serialPort.readline()    # (serialPort.in_waiting)
         print(foo.decode('UTF-8').rstrip())
         try:
-            search = imeiRegex.search(foo)
-            if(search):
-                imei = search.group(1).decode('UTF-8')
-                print("\r\nIMEI is " + imei)
+            if("imei" not in locals()):
+                search = imeiRegex.search(foo)
+                if(search):
+                    imei = search.group(1).decode('UTF-8')
+                    print("\r\nIMEI is " + imei)
 
             search = cfgRegex.search(foo)
             if(search):

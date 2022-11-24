@@ -27,7 +27,9 @@ enum satellite_state {
 typedef enum satellite_state satellite_state;
 
 struct sat_message {
-  uint16_t unit_id; // (0xFFFF = unset)  // also used for gps.satellites.value(), no. of satellites tracked
+  // uint16_t unit_id; // (0xFFFF = unset)  // also used for gps.satellites.value(), no. of satellites tracked
+  uint8_t satellites;  // # of satellites used in fix
+  uint8_t hdop;        // GPGGA hdop value times 10 (horizontal dilution of precision)
   uint8_t state;    // 0=prelaunch, 3=flight, etc
   uint8_t second;   // 0-59
   uint8_t minute;   // 0-59

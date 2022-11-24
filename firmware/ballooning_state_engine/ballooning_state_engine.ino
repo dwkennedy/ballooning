@@ -209,7 +209,8 @@ void print_hex_buffer(Stream &out, uint8_t* c, uint16_t count) {
 void build_beacon() {
   // beacon was initialized to point at MO_buffer, outgoing satellite buffer
   //consoleSerial.println("building a beacon");
-  beacon->unit_id = (uint16_t)gps.satellites.value();   // config.unit_id;
+  beacon->satellites = (uint8_t)gps.satellites.value();   // was config.unit_id;
+  beacon->hdop = (uint8_t)(gps.hdop.value()*10);  // hdop*10.  hdop is X.X
   beacon->state = active_state;
   beacon->second = gps.time.second();
   beacon->minute = gps.time.minute();
