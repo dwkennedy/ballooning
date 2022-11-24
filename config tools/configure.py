@@ -19,7 +19,8 @@ def build_config_struct():
     global imei
 
     serialnumber = 209879
-    imei = "300434066196920"
+    imei = "0"
+    #imei = "300434066196920"
 
 #    serialnumber = 209825
 #    imei = "300434066190990"
@@ -188,7 +189,8 @@ if __name__ == '__main__':
     cfg = unpack_config_struct(config_bytes)
     dump_config(cfg)
 
-    cfgRegex = re.compile(b'\*\*\* CFG ([0-9A-Fa-f]{72})')  # regex to find configuration from BAD output
+    cfgRegex = re.compile(b'\*CFG ([0-9A-Fa-f]{72})')  # regex to find configuration struct from BAD output
+    imeiRegex = re.compile(b'\*IMEI ([0-9]{15})')  # regex to find iridium modem imei from BAD output
 
     print("")
     if (len(sys.argv)<2):
@@ -245,6 +247,11 @@ if __name__ == '__main__':
         foo = serialPort.readline()    # (serialPort.in_waiting)
         print(foo.decode('UTF-8').rstrip())
         try:
+            search = imeiRegex.search(foo)
+            if(search):
+                imei = search.group(1).decode('UTF-8')
+                print("\r\nIMEI is " + imei)
+
             search = cfgRegex.search(foo)
             if(search):
                 #print("found: " + str(search.groups()))
