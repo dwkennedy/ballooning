@@ -380,16 +380,22 @@ uint8_t process_cmd() {
     return(0);  // no valid command found
 }
 
-void error_flash(uint8_t flashes, uint8_t repeats) {
+void error_flash(uint8_t flashes, uint8_t repeats, uint8_t duration) {
   for (uint8_t repeat = 0; repeat < repeats; repeat++) {
     for (uint8_t count = 0; count < flashes; count++) {
         digitalWrite(LED_RED, HIGH);  // blink LED to indicate problem
-        delay(100);
+        delay(duration);
         digitalWrite(LED_RED, LOW);
         delay(100);
     }
     delay(300);  // extra space between repetition of code
   }
+}
+
+void sos_flash() {
+  error_flash(3,1,100);
+  error_flash(3,1,300);
+  error_flash(3,1,100);
 }
 
 float read_batt_voltage() {
@@ -480,6 +486,9 @@ void setup() {
       consoleSerial.println(F("PASS"));
     }
     digitalWrite(MOTOR, LOW);  // turn off motor
+  } else {
+    // battery too low
+    sos_flash();
   }
   
   #endif
@@ -580,7 +589,7 @@ void setup() {
     consoleSerial.println(status);
     if (status == ISBD_NO_MODEM_DETECTED) {
       consoleSerial.println(F("*No modem detected: check wiring."));
-      error_flash(2,3);
+      error_flash(2,3,100);
       resetFunc();
     }
   }
@@ -614,7 +623,7 @@ void setup() {
   #endif
   if (!baro.begin()) {
     consoleSerial.println(F("*Cannot connect to MPL3115A2, resetting"));
-    error_flash(3,3);
+    error_flash(3,3,100);
     resetFunc();  // go back to setup()
   }
   baro.setMode(MPL3115A2_BAROMETER);
@@ -685,7 +694,7 @@ void setup() {
 #ifdef BMP180
   while (!bmp.begin()) {
     consoleSerial.println("Could not find a valid BMP085/180 sensor, check wiring");
-    error_flash(3,3);
+    error_flash(3,3,100);
   }
 #endif
 
@@ -706,7 +715,7 @@ void setup() {
   while(!mpr.begin())
   {
     consoleSerial.println(F("*Cannot connect to MPRLS sensor, resetting"));
-    error_flash(3,3);
+    error_flash(3,3,100);
     resetFunc();  // go back to setup()
   }
 #endif
@@ -755,7 +764,7 @@ void setup() {
     consoleSerial.print(F("*base_pressure="));
     consoleSerial.println(base_pressure);
     consoleSerial.println(F("*End setup()"));
-    consoleSerial.println(F("time,state,ring,gps_time,pressure,rise_rate,lat,lon,distance,gps_rx,voltage"));
+    consoleSerial.println(F("time,state,ring,gps_time,pressure,rise_rate,lat,lon,distance,satellites,hdop,voltage"));
   #endif
 
   n = 0;  // index to oldest sample, first to be replaced in buffer; n is the index into the circular buffer of pressures
@@ -1062,7 +1071,10 @@ bool ISBDCallback() {
       consoleSerial.print(F("NaN"));  // no GPS lock, so no accurate distance available
     }
     consoleSerial.print(F(","));
-    consoleSerial.print(gps.passedChecksum());
+    //consoleSerial.print(gps.passedChecksum());
+    consoleSerial.print(gps.satellites.value());
+    consoleSerial.print(F(","));
+    consoleSerial.print(gps.hdop.value());
     consoleSerial.print(F(","));
     consoleSerial.println(read_batt_voltage()); // (4*(analogRead(BATT_SENSE)/1024)*3.3); // 4:1 voltage divider, 3.3 analog reference
   }
