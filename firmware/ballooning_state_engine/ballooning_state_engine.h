@@ -27,7 +27,7 @@ enum satellite_state {
 typedef enum satellite_state satellite_state;
 
 struct sat_message {
-  uint16_t unit_id; // (0xFFFF = unset)
+  uint16_t unit_id; // (0xFFFF = unset)  // also used for gps.satellites.value(), no. of satellites tracked
   uint8_t state;    // 0=prelaunch, 3=flight, etc
   uint8_t second;   // 0-59
   uint8_t minute;   // 0-59
@@ -42,7 +42,7 @@ struct sat_message {
   int16_t speed;    // 100ths of knot
   uint32_t pressure;   // Pa 0-172369
   int16_t temperature;      // in tenths of deg C.  0-100 -> 0-1000
-  int16_t humidity; // in tenths of percent 0-100% -> 0-1000
+  int16_t humidity; // in tenths of percent 0-100% -> 0-1000 // now used for rise_rate
   uint16_t batt_voltage;  // 0-1023; 1023 = 10V.  3:1 voltage divider on input voltage
 };
 

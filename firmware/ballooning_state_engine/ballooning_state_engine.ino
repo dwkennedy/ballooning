@@ -209,7 +209,7 @@ void print_hex_buffer(Stream &out, uint8_t* c, uint16_t count) {
 void build_beacon() {
   // beacon was initialized to point at MO_buffer, outgoing satellite buffer
   //consoleSerial.println("building a beacon");
-  beacon->unit_id = config.unit_id;
+  beacon->unit_id = (uint16_t)gps.satellites.value();   // config.unit_id;
   beacon->state = active_state;
   beacon->second = gps.time.second();
   beacon->minute = gps.time.minute();
@@ -418,7 +418,8 @@ void setup() {
   //digitalWrite(SLEEP_PIN, HIGH);
 
   analogReference(EXTERNAL); // use AREF for reference voltage
-
+  pinMode(BATT_SENSE, INPUT);
+  
   beacon = (sat_message *)MO_buffer;  // we build the beacon in the MO_buffer
   
 #ifdef MPR
