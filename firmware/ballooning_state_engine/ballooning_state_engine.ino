@@ -496,14 +496,15 @@ void setup() {
     batt_voltage=read_batt_voltage();
     consoleSerial.print(F("BATTERY "));
     consoleSerial.println(batt_voltage);
-    //consoleSerial.println(F("V"));
     consoleSerial.print(F("CUT TEST: "));
     digitalWrite(CUTTER, HIGH);  // turn on cutter
     delay(100);
     if ((batt_voltage-read_batt_voltage()) > CUTTER_BATTERY_DROP_THRESHOLD) {  // test for cutter fault
       consoleSerial.println(F("OVERCURRENT"));
+      sos_flash();
     } else if ((batt_voltage-read_batt_voltage()) < OPEN_CIRCUIT_THRESHOLD) {
       consoleSerial.println(F("OPEN CIRCUIT"));
+      sos_flash();
     } else {
       consoleSerial.println(F("PASS"));
     }
@@ -515,8 +516,10 @@ void setup() {
     delay(50);
     if ((batt_voltage-read_batt_voltage()) > MOTOR_BATTERY_DROP_THRESHOLD) {  // test for motor fault
       consoleSerial.println(F("OVER CURRENT"));
+      sos_flash();
     } else if ((batt_voltage-read_batt_voltage()) < OPEN_CIRCUIT_THRESHOLD) {
       consoleSerial.println(F("OPEN CIRCUIT"));
+      sos_flash();
     } else {
       consoleSerial.println(F("PASS"));
     }
@@ -574,7 +577,7 @@ void setup() {
   crc16.add((uint8_t *)&config, sizeof(config));
   if (crc16.getCRC()) {
     #ifdef DEBUG
-    consoleSerial.println(F("EEPROM is corrupt"));
+    consoleSerial.println(F("EEPROM corrupt"));
     #endif
     sos_flash();
   }
@@ -626,7 +629,7 @@ void setup() {
   loop_enabled = false;  // disable SBD callback during setup
   modem.setPowerProfile(IridiumSBD::DEFAULT_POWER_PROFILE);  // high power
   //modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);  // for low power
-  modem.adjustSendReceiveTimeout(55);  // what will this do? DWK
+  modem.adjustSendReceiveTimeout(90);  // what will this do? DWK
   status = modem.begin();
   if (status != ISBD_SUCCESS)
   {
