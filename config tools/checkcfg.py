@@ -64,15 +64,17 @@ def dump_config(cfg):
     else:
         print("max longitude: ignore")
 
+    print("CRC16 checksum: 0x%x" % cfg[13])
+
 def unpack_config_struct(buffer):
-    config = struct.unpack('< HhHHHHHHIiiii', buffer)
+    config = struct.unpack('< HhHHHHHHIiiiiH', buffer)
     return config
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
 
-    cfgRegex = re.compile(b'\*\*\* EEPROM ([0-9A-Fa-f]{72})')  # regex to find configuration from BAD output
+    cfgRegex = re.compile(b'CFG ([0-9A-Fa-f]{76})')  # regex to find configuration from BAD output
 
     print("")
     if (len(sys.argv)<2):
@@ -142,5 +144,6 @@ struct eeprom_config {
   int32_t max_latitude;  // (millionths of degrees)
   int32_t min_longitude; // (millionths of degrees)
   int32_t max_longitude; // (millionths of degrees)
-};   'HhHHHHHHHIiiii'
+  uint16_t crc16;
+};   'HhHHHHHHHIiiiiH'
 """

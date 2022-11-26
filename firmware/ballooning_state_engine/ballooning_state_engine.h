@@ -46,6 +46,7 @@ struct sat_message {
   int16_t temperature;      // in tenths of deg C.  0-100 -> 0-1000
   int16_t humidity; // in tenths of percent 0-100% -> 0-1000 // now used for rise_rate
   uint16_t batt_voltage;  // 0-1023; 1023 = 10V.  3:1 voltage divider on input voltage
+  uint16_t crc16;  // 16 bit CRC calculated on preceding sizeof(sat_message)-2 bytes
 };
 
 struct eeprom_config {
@@ -62,6 +63,7 @@ struct eeprom_config {
   int32_t max_latitude;  // (millionths of degrees)
   int32_t min_longitude; // (millionths of degrees)
   int32_t max_longitude; // (millionths of degrees)
+  uint16_t crc16;  // 16 bit CC calculated on preceding sizeof(eeprom_config)-2 bytes
 };
 
 bool ISBDCallback();

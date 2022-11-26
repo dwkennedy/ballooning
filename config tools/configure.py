@@ -8,6 +8,7 @@ import re
 import json
 import datetime
 import requests
+import crcmod
 
 global serialnumber
 global imei
@@ -17,7 +18,10 @@ def build_config_struct():
 # elevator test; letdown 30 sec after launch, then flight ends 60 after launch
     global serialnumber
     global imei
+    global program_flag
 
+    # 0= read config/upload to database only, 1= program and then read config/upload to database
+    program_flag = 0
     # use serial number from Iridium modem; should match IMEI read from modem
     serialnumber = 209879
     # only set IMEI if you want to override what is returned from device
@@ -31,10 +35,10 @@ def build_config_struct():
 
     unit_id = 9879
     letdown_delay = -30  # positive: seconds after launch detect: negative, seconds after power on
-    letdown_duration = 15  # seconds
-    max_flight_duration = 0  # SECONDS, 0=ignore
+    letdown_duration = 1  # seconds
+    max_flight_duration = 300 # SECONDS, 0=ignore
     cut_pressure = 0      # Pascals, 0=ignore
-    cut_duration = 10000  # milliseconds
+    cut_duration = 3000  # milliseconds
     rise_rate_threshold = 85  # Pa/sec * conversion factor: NWC elevator is 100
     update_interval_satellite = 60  # SECONDS, 0 = no update
     max_distance = 0  # meters, 0=ignore
@@ -118,6 +122,10 @@ def build_config_struct():
                          max_latitude,
                          min_longitude,
                          max_longitude)
+
+    xmodem_crc_func = crcmod.mkCrcFun(0x11021, rev=False, initCrc=0x0000, xorOut=0x0000)
+    config = config + struct.pack("> H", xmodem_crc_func(config))
+
     return config
 
 def print_hi(name):
@@ -178,8 +186,10 @@ def dump_config(cfg):
     else:
         print("max longitude: ignore")
 
+    print("CRC16 checksum: 0x%x" % cfg[13])
+
 def unpack_config_struct(buffer):
-    config = struct.unpack('< HhHHHHHHIiiii', buffer)
+    config = struct.unpack('< HhHHHHHHIiiiiH', buffer)
     return config
 
 
@@ -190,8 +200,8 @@ if __name__ == '__main__':
     cfg = unpack_config_struct(config_bytes)
     dump_config(cfg)
 
-    cfgRegex = re.compile(b'\*CFG ([0-9A-Fa-f]{72})')  # regex to find configuration struct from BAD output
-    imeiRegex = re.compile(b'\*IMEI ([0-9]{15})')  # regex to find iridium modem imei from BAD output
+    cfgRegex = re.compile(b'CFG ([0-9A-Fa-f]{76})')  # regex to find configuration struct from BAD output
+    imeiRegex = re.compile(b'IMEI ([0-9]{15})')  # regex to find iridium modem imei from BAD output
 
     print("")
     if (len(sys.argv)<2):
@@ -226,23 +236,29 @@ if __name__ == '__main__':
         print(serialPort.readline().decode('UTF-8').rstrip())
         #sleep(0.100)
 
-    try:
-        for i in range(1,10):
-            print("tx: " + str(b'PRG' + config_bytes))
-            serialPort.write(b'PRG' + config_bytes)
-            for j in range(1,10):
-                foo = serialPort.readline()
-                if (foo):
-                    print(foo.decode('UTF-8').rstrip())
-                    if (foo==b'OK\r\n'):
-                        raise StopIteration
-                    if (foo==b'ERR\r\n'):
-                        sleep(0.1)
-                        break
-    except StopIteration:
+    if(program_flag):
+        print("Programming device...")
+        try:
+            for i in range(1,10):
+                print("tx: " + str(b'PRG' + config_bytes))
+                serialPort.write(b'PRG' + config_bytes)
+                for j in range(1,10):
+                    foo = serialPort.readline()
+                    if (foo):
+                        print(foo.decode('UTF-8').rstrip())
+                        if (foo==b'OK\r\n'):
+                            raise StopIteration
+                        if (foo==b'ERR\r\n'):
+                            sleep(0.1)
+                            break
+        except StopIteration:
+            serialPort.write(b'END')
+            print("Programming success!")
+
+    else:
         serialPort.write(b'END')
-        print("Programming success!")
-        print("Reading back configuration from device")
+
+    print("Reading back configuration from device")
 
     for i in range(1,10):
         foo = serialPort.readline()    # (serialPort.in_waiting)
@@ -261,21 +277,26 @@ if __name__ == '__main__':
                 #print("group(1): " + str(dump))
                 cfgbytes = bytes.fromhex(hexbytes.decode('UTF-8'))  # convert the ascii hex bytes to byte string (00-FF values in each position)
                 if(cfgbytes):
+                    xmodem_crc_func = crcmod.mkCrcFun(0x11021, rev=False, initCrc=0x0000, xorOut=0x0000)
+                    if (xmodem_crc_func(cfgbytes)):
+                        print("CRC16 error detected")
                     cfg = unpack_config_struct(cfgbytes)   # unpack the bytes of the struct into cfg tuple
                     print("\r\nConfiguration as read")
                     print("---------------------")
                     dump_config(cfg)  # dump the configuration tuple in readable format
                     break
-        except:
+        except Exception as e:
             print("something scrammed in regex/conversion to bytes/struct unpack!")
+            print(str(e))
             pass
 
     if ('hexbytes' in locals()):
         print("\r\nSubmitting configuration as read back from device to database")
         # goofed up by bug in CFG code in firmware, fix later DWK
         #data = b'CFG'.hex() + hexbytes.decode('UTF-8')  # this is the data JSON that comes from rock 7 to the web server
-        data = hexbytes.decode('UTF-8') + b'\x00\x00\x00'.hex()  # this is the data JSON that comes from rock 7 to the web server
+        data = b'CFG'.hex() + hexbytes.decode('UTF-8')  # this is the data JSON that comes from rock 7 to the web server
         transmit_time = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        #  sample--> data = '4346479726E2FF0F0000000000102755003C000000000080CC06020051250280A328FA002847FAF99B';
         payload = {'data': data,
                 'imei': imei,
                 'serial': serialnumber,
@@ -286,7 +307,7 @@ if __name__ == '__main__':
                 'iridium_longitude': 0,
                 'iridium_cep': 0
                 }
-        #print(payload)
+        print(payload)
         try:
             result = requests.post("http://kennedy.tw:8000/waypoint", json=payload)
             print("server response (200=SUCCESS): " + str(result.status_code))
@@ -313,4 +334,6 @@ struct eeprom_config {
   int32_t min_longitude; // (millionths of degrees)
   int32_t max_longitude; // (millionths of degrees)
 };   'HhHHHHHHHIiiii'
+
+#  also add two byte CRC16-XMODEM at the end
 """
