@@ -492,38 +492,40 @@ void setup() {
   #define CUTTER_BATTERY_DROP_THRESHOLD (1.5)
   #define MOTOR_BATTERY_DROP_THRESHOLD (1.2)
   #define OPEN_CIRCUIT_THRESHOLD (0.1)
-  if ( read_batt_voltage() > BATT_VOLTAGE_THRESHOLD ) { 
-    batt_voltage=read_batt_voltage();
-    consoleSerial.print(F("BATTERY "));
-    consoleSerial.println(batt_voltage);
+  batt_voltage = read_batt_voltage();
+  consoleSerial.print(F("BATTERY "));
+  consoleSerial.println(batt_voltage);
+  if ( batt_voltage > BATT_VOLTAGE_THRESHOLD ) { 
     consoleSerial.print(F("CUT TEST: "));
     digitalWrite(CUTTER, HIGH);  // turn on cutter
     delay(100);
-    if ((batt_voltage-read_batt_voltage()) > CUTTER_BATTERY_DROP_THRESHOLD) {  // test for cutter fault
+    batt_voltage = batt_voltage - read_batt_voltage();  // batt_voltage is now voltage drop due to battery internal resistance
+    digitalWrite(CUTTER, LOW);  // turn off cutter
+    if (batt_voltage > CUTTER_BATTERY_DROP_THRESHOLD) {  // test for cutter fault
       consoleSerial.println(F("OVERCURRENT"));
       sos_flash();
-    } else if ((batt_voltage-read_batt_voltage()) < OPEN_CIRCUIT_THRESHOLD) {
+    } else if (batt_voltage < OPEN_CIRCUIT_THRESHOLD) {
       consoleSerial.println(F("OPEN CIRCUIT"));
       sos_flash();
     } else {
       consoleSerial.println(F("PASS"));
     }
-    digitalWrite(CUTTER, LOW);  // turn off cutter
-    delay(50);
+    delay(100);  // let battery bounce back a little
     batt_voltage = read_batt_voltage();
     consoleSerial.print(F("MOTOR TEST: "));
     digitalWrite(MOTOR, HIGH);  // turn on motor
     delay(50);
-    if ((batt_voltage-read_batt_voltage()) > MOTOR_BATTERY_DROP_THRESHOLD) {  // test for motor fault
+    batt_voltage = batt_voltage - read_batt_voltage();
+    digitalWrite(MOTOR, LOW);  // turn off motor
+    if (batt_voltage > MOTOR_BATTERY_DROP_THRESHOLD) {  // test for motor fault
       consoleSerial.println(F("OVER CURRENT"));
       sos_flash();
-    } else if ((batt_voltage-read_batt_voltage()) < OPEN_CIRCUIT_THRESHOLD) {
+    } else if (batt_voltage < OPEN_CIRCUIT_THRESHOLD) {
       consoleSerial.println(F("OPEN CIRCUIT"));
       sos_flash();
     } else {
       consoleSerial.println(F("PASS"));
     }
-    digitalWrite(MOTOR, LOW);  // turn off motor
   } else {
     // battery too low
     sos_flash();
