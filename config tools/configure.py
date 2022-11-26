@@ -21,7 +21,7 @@ def build_config_struct():
     global program_flag
 
     # 0= read config/upload to database only, 1= program and then read config/upload to database
-    program_flag = 0
+    program_flag = 1
     # use serial number from Iridium modem; should match IMEI read from modem
     serialnumber = 209879
     # only set IMEI if you want to override what is returned from device
@@ -198,9 +198,11 @@ if __name__ == '__main__':
 
     config_bytes = build_config_struct()
     cfg = unpack_config_struct(config_bytes)
+    print("\r\nConfiguration requested")
+    print("---------------------")
     dump_config(cfg)
 
-    cfgRegex = re.compile(b'CFG ([0-9A-Fa-f]{76})')  # regex to find configuration struct from BAD output
+    cfgRegex = re.compile(b'CFG ([0-9A-Fa-f]{76})')  # regex to find configuration struct from BAD output.  config vector is 38 bytes
     imeiRegex = re.compile(b'IMEI ([0-9]{15})')  # regex to find iridium modem imei from BAD output
 
     print("")
