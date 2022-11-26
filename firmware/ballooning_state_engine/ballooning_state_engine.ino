@@ -683,7 +683,7 @@ void setup() {
     #ifdef DEBUG_MAX
     consoleSerial.println(F("Not detected, check wiring"));
     #endif
-    error_flash(3,3,100);
+    sos_flash();
     resetFunc();  // go back to setup()
   }
   baro.setMode(MPL3115A2_BAROMETER);
