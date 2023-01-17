@@ -74,11 +74,11 @@ def unpack_config_struct(buffer):
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
 
-    cfgRegex = re.compile(b'CFG ([0-9A-Fa-f]{76})')  # regex to find configuration from BAD output
+    cfgRegex = re.compile(b'EEPROM ([0-9A-Fa-f]{76})')  # regex to find configuration from BAD output
 
     print("")
     if (len(sys.argv)<2):
-        port = "COM20"
+        port = "COM3"
     else:
         port = sys.argv[1]
 
@@ -107,7 +107,7 @@ if __name__ == '__main__':
         #print(serialPort.readline().decode('UTF-8').rstrip())
         #sleep(0.100)
 
-    for i in range(1,10):
+    for i in range(1,20):
         foo = serialPort.readline()    # (serialPort.in_waiting)
         print(foo.decode('UTF-8').rstrip())
         try:

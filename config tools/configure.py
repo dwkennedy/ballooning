@@ -30,10 +30,10 @@ def build_config_struct():
 #    serialnumber = 209825
 #    imei = "300434066190990"
 
-#    serialnumber = 211176
-#    imei = "30043406754370"
+    serialnumber = 211176
+    imei = "30043406754370"
+    unit_id = 1176
 
-    unit_id = 9879
     letdown_delay = -30  # positive: seconds after launch detect: negative, seconds after power on
     letdown_duration = 1  # seconds
     max_flight_duration = 300 # SECONDS, 0=ignore
@@ -65,11 +65,8 @@ def build_config_struct():
         max_longitude = -97442332
 
     if (0):  # LEE configuration
-        serialnumber = 209879
-        imei = "300434066196920"
-        unit_id = 1240
         letdown_delay = 30  # positive: seconds after launch detect: negative, seconds after power on
-        letdown_duration = 15  # seconds
+        letdown_duration = 95  # seconds
         max_flight_duration = 60*60  # SECONDS, 0=ignore
         cut_pressure = 50000  # Pascals, 0=ignore
         cut_duration = 5000  # milliseconds
@@ -81,12 +78,9 @@ def build_config_struct():
         min_longitude = -76979028
         max_longitude = -75519990
 
-    if (0):  # Mike static test configuration
-        serialnumber = 209879
-        imei = "300434066196920"
-        unit_id = 1237
-        letdown_delay = -60  # positive: seconds after launch detect: negative, seconds after power on
-        letdown_duration = 1  # seconds
+    if (1):  # static test configuration
+        letdown_delay = -30  # positive: seconds after launch detect: negative, seconds after power on
+        letdown_duration = 10  # seconds
         max_flight_duration = 120  # SECONDS, 0=ignore
         cut_pressure = 0  # Pascals, 0=ignore
         cut_duration = 3000  # milliseconds
@@ -207,7 +201,7 @@ if __name__ == '__main__':
 
     print("")
     if (len(sys.argv)<2):
-        port = "COM20"
+        port = "COM3"
     else:
         port = sys.argv[1]
 
