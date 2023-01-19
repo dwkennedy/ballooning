@@ -489,9 +489,9 @@ void setup() {
   digitalWrite(LED_GREEN, LOW);   // turn on GREEN LED
   
   #ifdef DEBUG
-  #define CUTTER_BATTERY_DROP_THRESHOLD (1.5)
+  #define CUTTER_BATTERY_DROP_THRESHOLD (2.0)
   // changed MOTOR_BATTERY_DROP_THRESHOLD from 1.2 to 1.5 1/17/2023
-  #define MOTOR_BATTERY_DROP_THRESHOLD (1.5)
+  #define MOTOR_BATTERY_DROP_THRESHOLD (2.0)
   #define OPEN_CIRCUIT_THRESHOLD (0.1)
   batt_voltage = read_batt_voltage();
   consoleSerial.print(F("BATTERY "));
